@@ -24,7 +24,7 @@ function stripApiPrefix(url: string | undefined): string {
     return '/';
   }
 
-  const strippedUrl = url.replace(/^\/api(?=\/|$)/u, '');
+  const strippedUrl = url.replace(/^\/(?:api|backend)(?=\/|$)/u, '');
 
   return strippedUrl === '' ? '/' : strippedUrl;
 }
