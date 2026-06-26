@@ -3,5 +3,11 @@
   "buildCommand": "pnpm --filter @document-anonymizer/rules-engine build && pnpm --filter @document-anonymizer/web build",
   "framework": "nextjs",
   "installCommand": "pnpm install --frozen-lockfile",
-  "outputDirectory": "apps/web/.next"
+  "outputDirectory": "apps/web/.next",
+  "rewrites": [
+    {
+      "source": "/backend/(.*)",
+      "destination": "/api/$1"
+    }
+  ]
 }
