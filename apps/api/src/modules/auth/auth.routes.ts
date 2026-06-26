@@ -55,7 +55,7 @@ export async function registerAuthRoutes(
       userAgent: firstHeaderValue(request.headers['user-agent']),
     });
 
-    if (!result.ok) {
+    if (result.ok === false) {
       const statusCode = result.reason === 'locked' ? 423 : 401;
 
       return reply.code(statusCode).send({ error: result.publicError });

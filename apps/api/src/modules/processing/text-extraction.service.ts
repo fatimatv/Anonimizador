@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 import mammoth from 'mammoth';
-import { PDFParse } from 'pdf-parse';
 
 export interface ExtractedTextSummary {
   extractedTextHash: string;
@@ -33,6 +32,7 @@ export class TextExtractionService {
     }
 
     if (input.mimeType === 'application/pdf') {
+      const { PDFParse } = await import('pdf-parse');
       const parser = new PDFParse({ data: input.buffer });
 
       try {
