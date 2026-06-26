@@ -1,0 +1,7 @@
+node_modules/
+dist/
+coverage/
+.next/
+tmp-storage/
+pnpm-lock.yaml
+Nuevo Reglamento Ley de Protección de Datos Personales.md

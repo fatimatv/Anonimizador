@@ -1,0 +1,32 @@
+{
+  "name": "document-anonymizer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Secure batch document anonymization platform monorepo.",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@11.7.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm -r --parallel dev",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "install:all": "pnpm install",
+    "lint": "eslint .",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "@next/eslint-plugin-next": "^15.3.4",
+    "@eslint/js": "^9.30.1",
+    "eslint": "^9.30.1",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.35.1",
+    "vitest": "^3.2.4"
+  }
+}

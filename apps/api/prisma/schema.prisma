@@ -1,0 +1,203 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  role         UserRole
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  jobs        Job[]
+  auditEvents AuditEvent[]
+}
+
+enum UserRole {
+  admin
+  reviewer
+  operator
+}
+
+model Job {
+  id              String    @id @default(uuid())
+  createdByUserId String
+  status          JobStatus
+  totalFiles      Int
+  processedFiles  Int       @default(0)
+  failedFiles     Int       @default(0)
+  riskLevel       RiskLevel @default(low)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  expiresAt       DateTime?
+
+  createdBy User       @relation(fields: [createdByUserId], references: [id])
+  documents Document[]
+}
+
+enum JobStatus {
+  uploaded
+  queued
+  processing
+  needs_review
+  approved
+  rejected
+  completed
+  failed
+  deleted
+}
+
+model Document {
+  id                    String         @id @default(uuid())
+  jobId                 String
+  originalFileNameHash  String
+  originalMimeType      String
+  fileSizeBytes         Int
+  status                DocumentStatus
+  originalStorageKey    String?
+  anonymizedStorageKey  String?
+  contentHash           String?
+  anonymizedContentHash String?
+  detectionSummary      Json?
+  validationSummary     Json?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  expiresAt             DateTime?
+
+  job              Job              @relation(fields: [jobId], references: [id])
+  detectedEntities DetectedEntity[]
+}
+
+enum DocumentStatus {
+  uploaded
+  extracting_text
+  detecting_entities
+  anonymizing
+  needs_review
+  approved
+  rejected
+  completed
+  failed
+  deleted
+}
+
+model DetectedEntity {
+  id                String          @id @default(uuid())
+  documentId        String
+  entityType        EntityType
+  category          EntityCategory
+  startOffset       Int?
+  endOffset         Int?
+  confidence        Float
+  replacementType   ReplacementType
+  previewMasked     String
+  rawValueHash      String
+  ruleId            String?
+  contextWindowHash String?
+  createdAt         DateTime        @default(now())
+
+  document Document @relation(fields: [documentId], references: [id])
+}
+
+enum EntityType {
+  person_name
+  dni
+  passport
+  foreigner_card
+  ruc
+  email
+  phone
+  address
+  bank_account
+  credit_card
+  health_data
+  biometric_data
+  minor_data
+  location_data
+  license_plate
+  ip_address
+  url
+  case_number
+  signature
+  other
+}
+
+enum EntityCategory {
+  personal_data
+  sensitive_data
+  confidential_data
+  identifier
+}
+
+enum ReplacementType {
+  redact
+  mask
+  pseudonymize
+  remove
+}
+
+enum RiskLevel {
+  low
+  medium
+  high
+  critical
+}
+
+model AnonymizationRule {
+  id              String          @id @default(uuid())
+  name            String
+  description     String?
+  entityType      EntityType
+  replacementType ReplacementType
+  pattern         String?
+  isActive        Boolean         @default(true)
+  priority        Int             @default(100)
+  version         Int             @default(1)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model AuditEvent {
+  id            String      @id @default(uuid())
+  actorUserId   String?
+  action        AuditAction
+  resourceType  String
+  resourceId    String?
+  result        AuditResult
+  metadata      Json?
+  ipHash        String?
+  userAgentHash String?
+  createdAt     DateTime    @default(now())
+
+  actor User? @relation(fields: [actorUserId], references: [id])
+}
+
+enum AuditAction {
+  login
+  logout
+  upload_started
+  upload_rejected
+  upload_completed
+  processing_started
+  detection_completed
+  anonymization_completed
+  review_approved
+  review_rejected
+  download_anonymized
+  deletion_requested
+  deletion_completed
+  security_event
+}
+
+enum AuditResult {
+  success
+  failure
+  blocked
+}
