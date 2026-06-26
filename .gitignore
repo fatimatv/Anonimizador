@@ -2,6 +2,7 @@ node_modules/
 .pnpm-store/
 .agents/
 .codex/
+.vercel/
 
 dist/
 coverage/
