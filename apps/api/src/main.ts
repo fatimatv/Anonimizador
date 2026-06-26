@@ -36,6 +36,7 @@ const DEFAULT_PORT = 3001;
 export interface BuildAppOptions {
   auditService?: AuditService;
   deletionService?: DeletionService;
+  enableRetentionCleanup?: boolean;
   jobRepository?: JobRepository;
   processingQueue?: ProcessingQueue;
   sessionService?: SessionService;
@@ -158,7 +159,9 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     ttlMinutes: Number(process.env.TEMP_FILE_TTL_MINUTES ?? 60),
     uploadLimits,
   });
-  registerRetentionCleanup(app, deletionService);
+  if (options.enableRetentionCleanup ?? process.env.VERCEL !== '1') {
+    registerRetentionCleanup(app, deletionService);
+  }
 
   return app;
 }

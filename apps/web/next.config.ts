@@ -1,6 +1,7 @@
 import type { NextConfig } from 'next';
 
-const apiInternalUrl = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:3001';
+const apiInternalUrl = process.env.API_INTERNAL_URL;
+const apiRewriteDestination = apiInternalUrl ? `${apiInternalUrl}/:path*` : '/api/:path*';
 
 const nextConfig: NextConfig = {
   eslint: {
@@ -11,7 +12,7 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
-        destination: `${apiInternalUrl}/:path*`,
+        destination: apiRewriteDestination,
         source: '/backend/:path*',
       },
     ];
