@@ -1,7 +1,12 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { firstHeaderValue } from '../../common/utils/headers.js';
 import { canAccessRole, type AuthenticatedUser } from '../../common/guards/roles.js';
-import type { JobRepository } from '../documents/job.repository.js';
+import type {
+  DetectedEntityRecord,
+  DocumentRecord,
+  JobRecord,
+  JobRepository,
+} from '../documents/job.repository.js';
 import type { AuditService } from '../audit/audit.service.js';
 import type { ProcessingQueue } from '../processing/processing.queue.js';
 import type { StorageService } from '../storage/storage.service.js';
@@ -145,22 +150,75 @@ export async function registerUploadRoutes(
 
     const updatedJob = await options.jobRepository.getJobById(job.id);
     const updatedDocuments = await options.jobRepository.getDocumentsByJobId(job.id);
+    const serializedDocuments = [];
+
+    for (const document of updatedDocuments) {
+      serializedDocuments.push(await serializeUploadDocument(document, options));
+    }
 
     return reply.code(201).send({
-      documents: updatedDocuments.map((document) => ({
-        id: document.id,
-        fileSizeBytes: document.fileSizeBytes,
-        mimeType: document.originalMimeType,
-        status: document.status,
-      })),
-      job: {
-        expiresAt: updatedJob?.expiresAt ?? job.expiresAt,
-        id: updatedJob?.id ?? job.id,
-        status: updatedJob?.status ?? job.status,
-        totalFiles: updatedJob?.totalFiles ?? job.totalFiles,
-      },
+      documents: serializedDocuments,
+      job: serializeJob(updatedJob ?? job),
     });
   });
+}
+
+function serializeJob(job: JobRecord) {
+  return {
+    expiresAt: job.expiresAt,
+    failedFiles: job.failedFiles,
+    id: job.id,
+    processedFiles: job.processedFiles,
+    riskLevel: job.riskLevel,
+    status: job.status,
+    totalFiles: job.totalFiles,
+  };
+}
+
+async function serializeUploadDocument(document: DocumentRecord, options: UploadRoutesOptions) {
+  const detections = await options.jobRepository.getDetectedEntitiesByDocumentId(document.id);
+
+  return {
+    anonymizedText: await readAnonymizedText(document, options),
+    detectionSummary: document.detectionSummary,
+    detections: detections.map(serializeDetection),
+    fileSizeBytes: document.fileSizeBytes,
+    id: document.id,
+    mimeType: document.originalMimeType,
+    status: document.status,
+    validationSummary: document.validationSummary,
+  };
+}
+
+function serializeDetection(detection: DetectedEntityRecord) {
+  return {
+    category: detection.category,
+    confidence: detection.confidence,
+    endOffset: detection.endOffset,
+    entityType: detection.entityType,
+    id: detection.id,
+    previewMasked: detection.previewMasked,
+    replacementType: detection.replacementType,
+    ruleId: detection.ruleId,
+    startOffset: detection.startOffset,
+  };
+}
+
+async function readAnonymizedText(
+  document: DocumentRecord,
+  options: UploadRoutesOptions,
+): Promise<string | null> {
+  if (!document.anonymizedStorageKey) {
+    return null;
+  }
+
+  try {
+    const anonymizedFile = await options.storageService.read(document.anonymizedStorageKey);
+
+    return anonymizedFile.toString('utf8');
+  } catch {
+    return null;
+  }
 }
 
 async function collectUploadFiles(

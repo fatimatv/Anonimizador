@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Download,
   Eye,
+  Files,
   FileText,
   LogOut,
   RefreshCw,
@@ -47,11 +48,14 @@ const statusLabels: Record<string, string> = {
   uploaded: 'Cargado',
 };
 
+type UploadMode = 'batch' | 'single';
+
 export default function HomePage() {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [files, setFiles] = useState<File[]>([]);
+  const [uploadMode, setUploadMode] = useState<UploadMode>('single');
   const [jobDetail, setJobDetail] = useState<JobDetail | null>(null);
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [detections, setDetections] = useState<DetectionItem[]>([]);
@@ -61,6 +65,9 @@ export default function HomePage() {
   const selectedDocument = useMemo(() => {
     return jobDetail?.documents.find((document) => document.id === selectedDocumentId) ?? null;
   }, [jobDetail, selectedDocumentId]);
+  const isLocalJob = useMemo(() => {
+    return jobDetail?.documents.some((document) => document.anonymizedText !== undefined) ?? false;
+  }, [jobDetail]);
 
   const canUpload = user?.role === 'admin' || user?.role === 'operator';
   const canReview = user?.role === 'admin' || user?.role === 'reviewer';
@@ -79,12 +86,17 @@ export default function HomePage() {
       return;
     }
 
+    if (isLocalJob) {
+      setNotice('Los resultados de esta carga ya estan actualizados');
+      return;
+    }
+
     try {
       setJobDetail(await getJob(jobDetail.job.id));
     } catch (error) {
       showError(error);
     }
-  }, [jobDetail?.job.id, showError]);
+  }, [isLocalJob, jobDetail?.job.id, showError]);
 
   useEffect(() => {
     currentSession()
@@ -98,10 +110,21 @@ export default function HomePage() {
       return;
     }
 
+    if (selectedDocument?.detections) {
+      setDetections(selectedDocument.detections);
+      return;
+    }
+
     getDetections(selectedDocumentId)
       .then((result) => setDetections(result.detections))
       .catch((error) => showError(error));
-  }, [selectedDocumentId, showError]);
+  }, [selectedDocument, selectedDocumentId, showError]);
+
+  useEffect(() => {
+    if (uploadMode === 'single' && files.length > 1) {
+      setFiles(files.slice(0, 1));
+    }
+  }, [files, uploadMode]);
 
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -148,10 +171,12 @@ export default function HomePage() {
 
     try {
       const upload = await uploadBatch(files);
-      const detail = await getJob(upload.job.id);
-      setJobDetail(detail);
-      setSelectedDocumentId(detail.documents[0]?.id ?? null);
+      setJobDetail(upload);
+      setSelectedDocumentId(upload.documents[0]?.id ?? null);
       setFiles([]);
+      setNotice(
+        upload.documents.length === 1 ? 'Documento procesado' : 'Lote procesado',
+      );
     } catch (error) {
       showError(error);
     } finally {
@@ -159,11 +184,41 @@ export default function HomePage() {
     }
   }
 
+  function updateLocalDocumentStatus(documentId: string, status: 'approved' | 'rejected') {
+    setJobDetail((currentDetail) => {
+      if (!currentDetail) {
+        return currentDetail;
+      }
+
+      const documents = currentDetail.documents.map((document) => {
+        return document.id === documentId ? { ...document, status } : document;
+      });
+      const reviewedDocuments = documents.filter((document) => {
+        return document.status === 'approved' || document.status === 'rejected';
+      });
+
+      return {
+        documents,
+        job: {
+          ...currentDetail.job,
+          status:
+            reviewedDocuments.length === documents.length ? 'completed' : currentDetail.job.status,
+        },
+      };
+    });
+    setNotice(status === 'approved' ? 'Documento aprobado' : 'Documento rechazado');
+  }
+
   async function handleReview(documentId: string, action: 'approve' | 'reject') {
     setBusy(true);
     setNotice(null);
 
     try {
+      if (isLocalJob) {
+        updateLocalDocumentStatus(documentId, action === 'approve' ? 'approved' : 'rejected');
+        return;
+      }
+
       if (action === 'approve') {
         await approveDocument(documentId);
       } else {
@@ -183,6 +238,13 @@ export default function HomePage() {
     setNotice(null);
 
     try {
+      const localDocument = jobDetail?.documents.find((document) => document.id === documentId);
+
+      if (localDocument?.anonymizedText !== undefined) {
+        downloadTextFile(documentId, localDocument.anonymizedText ?? '');
+        return;
+      }
+
       const blob = await downloadAnonymized(documentId);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
@@ -207,6 +269,14 @@ export default function HomePage() {
     setNotice(null);
 
     try {
+      if (isLocalJob) {
+        setJobDetail(null);
+        setSelectedDocumentId(null);
+        setDetections([]);
+        setNotice('Carga eliminada');
+        return;
+      }
+
       await deleteJob(jobDetail.job.id);
       setJobDetail(null);
       setSelectedDocumentId(null);
@@ -347,16 +417,55 @@ export default function HomePage() {
               <UploadCloud className="text-[#011EF4]" size={20} aria-hidden="true" />
             </div>
             <form onSubmit={handleUpload} className="mt-4 space-y-4">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  aria-pressed={uploadMode === 'single'}
+                  className={
+                    uploadMode === 'single'
+                      ? 'inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#011EF4] px-3 text-sm font-bold text-white'
+                      : 'inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#dfe3ef] bg-white px-3 text-sm font-bold text-[#374151]'
+                  }
+                  disabled={busy}
+                  onClick={() => setUploadMode('single')}
+                  type="button"
+                >
+                  <FileText size={16} aria-hidden="true" />
+                  Documento
+                </button>
+                <button
+                  aria-pressed={uploadMode === 'batch'}
+                  className={
+                    uploadMode === 'batch'
+                      ? 'inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#011EF4] px-3 text-sm font-bold text-white'
+                      : 'inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#dfe3ef] bg-white px-3 text-sm font-bold text-[#374151]'
+                  }
+                  disabled={busy}
+                  onClick={() => setUploadMode('batch')}
+                  type="button"
+                >
+                  <Files size={16} aria-hidden="true" />
+                  Lote
+                </button>
+              </div>
               <input
+                key={uploadMode}
                 className="block w-full text-sm file:mr-3 file:h-10 file:rounded-md file:border-0 file:bg-[#011EF4] file:px-3 file:text-sm file:font-bold file:text-white"
                 disabled={!canUpload || busy}
-                multiple
-                onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
+                multiple={uploadMode === 'batch'}
+                onChange={(event) => {
+                  const selectedFiles = Array.from(event.target.files ?? []);
+
+                  setFiles(uploadMode === 'single' ? selectedFiles.slice(0, 1) : selectedFiles);
+                }}
                 type="file"
                 accept=".txt,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               />
               <div className="min-h-10 rounded-md bg-[#f4f6fb] px-3 py-2 text-sm text-[#6F7072]">
-                {files.length > 0 ? `${files.length} archivo(s) seleccionado(s)` : 'Sin archivos'}
+                {files.length > 0
+                  ? files.length === 1
+                    ? '1 documento seleccionado'
+                    : `${files.length} documentos seleccionados`
+                  : 'Sin documentos'}
               </div>
               <button
                 className="ialaw-button-primary w-full"
@@ -364,7 +473,7 @@ export default function HomePage() {
                 type="submit"
               >
                 <UploadCloud size={17} aria-hidden="true" />
-                Cargar lote
+                {uploadMode === 'single' ? 'Procesar documento' : 'Procesar lote'}
               </button>
             </form>
           </section>
@@ -422,7 +531,9 @@ export default function HomePage() {
               <DetectionPanel document={selectedDocument} detections={detections} />
             </div>
           ) : (
-            <div className="p-8 text-sm text-[#6F7072]">Carga un lote para ver documentos.</div>
+            <div className="p-8 text-sm text-[#6F7072]">
+              Carga un documento o un lote para ver resultados.
+            </div>
           )}
         </section>
       </div>
@@ -595,4 +706,15 @@ function formatBytes(value: number): string {
   }
 
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function downloadTextFile(documentId: string, text: string): void {
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+
+  anchor.href = url;
+  anchor.download = `anonymized-${documentId}.txt`;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }

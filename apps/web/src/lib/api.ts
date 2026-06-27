@@ -24,8 +24,22 @@ export interface DetectionSummary {
   totalEntities: number;
 }
 
+export interface DetectionItem {
+  category: string;
+  confidence: number;
+  endOffset: number;
+  entityType: string;
+  id: string;
+  previewMasked: string;
+  replacementType: string;
+  ruleId: string | null;
+  startOffset: number;
+}
+
 export interface DocumentItem {
+  anonymizedText?: string | null;
   detectionSummary?: DetectionSummary | null;
+  detections?: DetectionItem[];
   fileSizeBytes: number;
   id: string;
   mimeType: string;
@@ -51,18 +65,6 @@ export interface JobDetail {
 export interface UploadResponse {
   documents: DocumentItem[];
   job: Job;
-}
-
-export interface DetectionItem {
-  category: string;
-  confidence: number;
-  endOffset: number;
-  entityType: string;
-  id: string;
-  previewMasked: string;
-  replacementType: string;
-  ruleId: string | null;
-  startOffset: number;
 }
 
 export interface DetectionsResponse {

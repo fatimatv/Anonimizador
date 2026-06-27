@@ -128,7 +128,7 @@ describe('upload module', () => {
     });
   });
 
-  it('accepts and locally extracts a valid txt upload without returning content, names, or storage paths', async () => {
+  it('accepts and locally processes a valid txt upload without returning names or storage paths', async () => {
     const { app, auditService, cookieHeader, jobRepository } = await createUploadTestApp();
     const originalText = 'Texto de prueba para anonimizar mas adelante.';
     const multipart = multipartPayload([
@@ -159,6 +159,7 @@ describe('upload module', () => {
     expect(body).toMatchObject({
       documents: [
         {
+          anonymizedText: originalText,
           fileSizeBytes: expect.any(Number),
           mimeType: 'text/plain',
           status: 'needs_review',
@@ -171,7 +172,6 @@ describe('upload module', () => {
     });
     expect(serializedBody).not.toContain('reporte.txt');
     expect(serializedBody).not.toContain('tmp-storage');
-    expect(serializedBody).not.toContain(originalText);
     expect(documents[0]?.originalStorageKey).toContain('/original/');
     expect(documents[0]?.originalStorageKey).not.toContain('reporte');
     expect(documents[0]?.validationSummary.extraction).toEqual({
