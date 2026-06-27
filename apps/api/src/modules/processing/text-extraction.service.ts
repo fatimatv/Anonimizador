@@ -32,6 +32,7 @@ export class TextExtractionService {
     }
 
     if (input.mimeType === 'application/pdf') {
+      await import('@napi-rs/canvas');
       const { PDFParse } = await import('pdf-parse');
       const parser = new PDFParse({ data: input.buffer });
 
