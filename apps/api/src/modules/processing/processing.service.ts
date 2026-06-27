@@ -128,7 +128,15 @@ export class ProcessingService {
       });
       await this.options.jobRepository.incrementProcessedFiles(document.jobId);
       await this.finalizeJobIfReady(document.jobId);
-    } catch {
+    } catch (error) {
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      const errorMessage = error instanceof Error ? error.message.slice(0, 160) : undefined;
+
+      console.error('local_processing_failed', {
+        errorMessage,
+        errorName,
+        reason: failureReason,
+      });
       await this.options.jobRepository.updateDocumentStatus(document.id, 'failed');
       await this.options.jobRepository.incrementFailedFiles(document.jobId);
       await this.finalizeJobIfReady(document.jobId);
