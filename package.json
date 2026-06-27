@@ -31,8 +31,5 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.35.1",
     "vitest": "^3.2.4"
-  },
-  "dependencies": {
-    "@napi-rs/canvas": "^1.0.1"
   }
 }

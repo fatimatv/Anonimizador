@@ -16,7 +16,6 @@
     "@fastify/helmet": "^13.0.1",
     "@fastify/multipart": "^9.0.3",
     "@fastify/rate-limit": "^10.3.0",
-    "@napi-rs/canvas": "^1.0.1",
     "@prisma/client": "^6.10.1",
     "argon2": "^0.43.0",
     "bullmq": "^5.56.0",
