@@ -126,6 +126,7 @@ export async function login(input: { email: string; password: string }) {
 
 export async function publicLogin() {
   return await apiJson<{ expiresAt: string; user: CurrentUser }>('/auth/public', {
+    body: JSON.stringify({}),
     method: 'POST',
   });
 }
