@@ -34,6 +34,12 @@ export class TextExtractionService {
     if (input.mimeType === 'application/pdf') {
       ensurePdfJsPolyfills();
       const { PDFParse } = await import('pdf-parse');
+      const workerSrc = await resolvePdfJsWorkerSrc();
+
+      if (workerSrc) {
+        PDFParse.setWorker(workerSrc);
+      }
+
       const parser = new PDFParse({ data: input.buffer });
 
       try {
@@ -67,6 +73,17 @@ function ensurePdfJsPolyfills(): void {
   globalScope.DOMMatrix ??= MinimalDOMMatrix;
   globalScope.ImageData ??= MinimalImageData;
   globalScope.Path2D ??= MinimalPath2D;
+}
+
+async function resolvePdfJsWorkerSrc(): Promise<string | undefined> {
+  try {
+    // @ts-ignore pdfjs publishes this worker as a runtime ESM asset.
+    await import('pdfjs-dist/legacy/build/pdf.worker.mjs');
+
+    return import.meta.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs');
+  } catch {
+    return undefined;
+  }
 }
 
 class MinimalDOMMatrix {
