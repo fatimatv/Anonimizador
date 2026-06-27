@@ -158,17 +158,10 @@ const regexRules: DetectorRule[] = [
     category: 'identifier',
     confidence: 0.76,
     entityType: 'license_plate',
-    pattern: /\b[A-Z0-9]{3}-[A-Z0-9]{3}\b/giu,
+    pattern:
+      /\b(?:placa|matr[ií]cula(?:\s+vehicular)?|veh[ií]culo\s+placa)[:\s-]*([A-Z0-9]{3}-[A-Z0-9]{3})\b/giu,
     replacementType: 'mask',
     ruleId: 'license-plate-regex-v1',
-  },
-  {
-    category: 'confidential_data',
-    confidence: 0.8,
-    entityType: 'case_number',
-    pattern: /\b(?:expediente|caso)[:\s-]*(\d{3,8}[-/]\d{2,4})\b/giu,
-    replacementType: 'mask',
-    ruleId: 'case-number-context-v1',
     transformMatch: (match) => match[1] ?? match[0],
   },
   {

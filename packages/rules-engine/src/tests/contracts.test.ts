@@ -148,17 +148,26 @@ describe('local detectors', () => {
     ]);
   });
 
-  it('detects bank accounts, license plates, case numbers, and signatures', () => {
+  it('detects bank accounts, license plates with vehicle context, and signatures', () => {
     const result = detectSensitiveEntities(
-      'Cuenta 12345678901234567890, placa ABC-123, expediente 1234-2024. Firma: Maria Lopez',
+      'Cuenta 12345678901234567890, placa ABC-123. Expediente 1234-2024. Firma: Maria Lopez',
     );
 
     expect(result.detections.map((detection) => detection.entityType)).toEqual([
       'bank_account',
       'license_plate',
-      'case_number',
       'signature',
     ]);
+  });
+
+  it('does not treat legal expediente codes as personal identifiers', () => {
+    const result = detectSensitiveEntities('EXPEDIENTE N.º 014-2025/MPP-SIA');
+
+    expect(result.detections.map((detection) => detection.entityType)).not.toContain('case_number');
+    expect(result.detections.map((detection) => detection.entityType)).not.toContain(
+      'license_plate',
+    );
+    expect(result.detections).toHaveLength(0);
   });
 
   it('detects address, location, and person name context', () => {

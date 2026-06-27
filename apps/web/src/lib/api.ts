@@ -50,6 +50,7 @@ export interface DocumentItem {
       replacementsApplied: number;
       rulesVersion?: string;
     };
+    extension?: string;
     extraction?: {
       extractedTextHash: string;
       extractedTextLength: number;

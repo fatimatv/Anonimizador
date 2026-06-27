@@ -174,9 +174,7 @@ export default function HomePage() {
       setJobDetail(upload);
       setSelectedDocumentId(upload.documents[0]?.id ?? null);
       setFiles([]);
-      setNotice(
-        upload.documents.length === 1 ? 'Documento procesado' : 'Lote procesado',
-      );
+      setNotice(upload.documents.length === 1 ? 'Documento procesado' : 'Lote procesado');
     } catch (error) {
       showError(error);
     } finally {
@@ -241,18 +239,14 @@ export default function HomePage() {
       const localDocument = jobDetail?.documents.find((document) => document.id === documentId);
 
       if (localDocument?.anonymizedText !== undefined) {
-        downloadTextFile(documentId, localDocument.anonymizedText ?? '');
+        downloadLocalAnonymizedDocument(localDocument, localDocument.anonymizedText ?? '');
         return;
       }
 
       const blob = await downloadAnonymized(documentId);
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
+      const extension = outputExtensionFor(localDocument);
 
-      anchor.href = url;
-      anchor.download = `anonymized-${documentId}.txt`;
-      anchor.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, `anonimizado-${shortDocumentId(documentId)}${extension}`);
     } catch (error) {
       showError(error);
     } finally {
@@ -513,20 +507,23 @@ export default function HomePage() {
           </div>
           {jobDetail ? (
             <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_360px]">
-              <div className="divide-y divide-[#dfe3ef]">
-                {jobDetail.documents.map((document) => (
-                  <DocumentRow
-                    canReview={canReview}
-                    document={document}
-                    isSelected={document.id === selectedDocumentId}
-                    key={document.id}
-                    onApprove={() => handleReview(document.id, 'approve')}
-                    onDownload={() => handleDownload(document.id)}
-                    onReject={() => handleReview(document.id, 'reject')}
-                    onSelect={() => setSelectedDocumentId(document.id)}
-                    busy={busy}
-                  />
-                ))}
+              <div className="min-w-0">
+                <div className="divide-y divide-[#dfe3ef]">
+                  {jobDetail.documents.map((document) => (
+                    <DocumentRow
+                      canReview={canReview}
+                      document={document}
+                      isSelected={document.id === selectedDocumentId}
+                      key={document.id}
+                      onApprove={() => handleReview(document.id, 'approve')}
+                      onDownload={() => handleDownload(document.id)}
+                      onReject={() => handleReview(document.id, 'reject')}
+                      onSelect={() => setSelectedDocumentId(document.id)}
+                      busy={busy}
+                    />
+                  ))}
+                </div>
+                <ReviewPanel document={selectedDocument} />
               </div>
               <DetectionPanel document={selectedDocument} detections={detections} />
             </div>
@@ -576,7 +573,12 @@ function DocumentRow(props: {
         </div>
         <div className="flex flex-wrap gap-2">
           <button
-            className="icon-button"
+            aria-pressed={props.isSelected}
+            className={
+              props.isSelected
+                ? 'icon-button border-[#011EF4] bg-[#011EF4] text-white'
+                : 'icon-button'
+            }
             onClick={props.onSelect}
             title="Ver detecciones"
             type="button"
@@ -617,6 +619,44 @@ function DocumentRow(props: {
         </div>
       </div>
     </article>
+  );
+}
+
+function ReviewPanel(props: { document: DocumentItem | null }) {
+  const document = props.document;
+  const anonymizedText = document?.anonymizedText ?? '';
+  const totalEntities = document?.detectionSummary?.totalEntities ?? 0;
+  const replacements = document?.validationSummary?.anonymization?.replacementsApplied ?? 0;
+
+  return (
+    <section className="border-t border-[#dfe3ef] bg-white p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="text-base font-extrabold text-[#011EF4]">Vista de revisión</h3>
+          {document ? (
+            <p className="mt-1 font-mono text-xs text-[#6F7072]">
+              {shortDocumentId(document.id)} · {labelForStatus(document.status)}
+            </p>
+          ) : null}
+        </div>
+        {document ? (
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <Metric label="Detecciones" value={String(totalEntities)} />
+            <Metric label="Reemplazos" value={String(replacements)} />
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-4 min-h-[360px] max-h-[560px] overflow-auto rounded-md border border-[#dfe3ef] bg-[#f8fafc]">
+        {document ? (
+          <pre className="whitespace-pre-wrap break-words p-4 font-mono text-sm leading-6 text-[#111827]">
+            {anonymizedText || 'Documento sin texto anonimizado disponible.'}
+          </pre>
+        ) : (
+          <p className="p-4 text-sm text-[#6F7072]">Selecciona un documento.</p>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -732,13 +772,234 @@ function messageForNotice(message: string): string {
   return messages[message] ?? message;
 }
 
-function downloadTextFile(documentId: string, text: string): void {
-  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+function downloadLocalAnonymizedDocument(document: DocumentItem, text: string): void {
+  const extension = outputExtensionFor(document);
+  const blob =
+    extension === '.pdf'
+      ? createPdfBlob(text)
+      : extension === '.doc'
+        ? createWordBlob(text)
+        : new Blob([text], { type: 'text/plain;charset=utf-8' });
+
+  downloadBlob(blob, `anonimizado-${shortDocumentId(document.id)}${extension}`);
+}
+
+function downloadBlob(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
 
   anchor.href = url;
-  anchor.download = `anonymized-${documentId}.txt`;
+  anchor.download = fileName;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+function outputExtensionFor(document: DocumentItem | null | undefined): '.doc' | '.pdf' | '.txt' {
+  const extension = document?.validationSummary?.extension?.toLowerCase();
+  const mimeType = document?.mimeType;
+
+  if (extension === '.pdf' || mimeType === 'application/pdf') {
+    return '.pdf';
+  }
+
+  if (
+    extension === '.docx' ||
+    mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  ) {
+    return '.doc';
+  }
+
+  return '.txt';
+}
+
+function createWordBlob(text: string): Blob {
+  const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 12pt; line-height: 1.5; }
+    pre { font-family: Arial, sans-serif; white-space: pre-wrap; word-wrap: break-word; }
+  </style>
+</head>
+<body>
+  <pre>${escapeHtml(text)}</pre>
+</body>
+</html>`;
+
+  return new Blob(['\ufeff', html], { type: 'application/msword;charset=utf-8' });
+}
+
+function createPdfBlob(text: string): Blob {
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+  const margin = 48;
+  const fontSize = 11;
+  const lineHeight = 15;
+  const maxCharsPerLine = 92;
+  const maxLinesPerPage = Math.floor((pageHeight - margin * 2) / lineHeight);
+  const lines = wrapTextForPdf(text, maxCharsPerLine);
+  const pages = chunkLines(lines.length > 0 ? lines : [''], maxLinesPerPage);
+  const objects: string[] = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+  const pageObjectIds: number[] = [];
+
+  pages.forEach((pageLines, index) => {
+    const pageObjectId = 4 + index * 2;
+    const contentObjectId = pageObjectId + 1;
+    const content = pdfContentStream(pageLines, {
+      fontSize,
+      lineHeight,
+      margin,
+      pageHeight,
+    });
+
+    pageObjectIds.push(pageObjectId);
+    objects[pageObjectId - 1] =
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentObjectId} 0 R >>`;
+    objects[contentObjectId - 1] = `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
+  });
+
+  objects[1] = `<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pageObjectIds.length} >>`;
+
+  return new Blob([buildPdf(objects)], { type: 'application/pdf' });
+}
+
+function pdfContentStream(
+  lines: readonly string[],
+  options: { fontSize: number; lineHeight: number; margin: number; pageHeight: number },
+): string {
+  const firstBaseline = options.pageHeight - options.margin;
+  const commands = [
+    'BT',
+    `/F1 ${options.fontSize} Tf`,
+    `${options.margin} ${firstBaseline} Td`,
+    `${options.lineHeight} TL`,
+  ];
+
+  lines.forEach((line, index) => {
+    if (index > 0) {
+      commands.push('T*');
+    }
+
+    if (line.length > 0) {
+      commands.push(`<${utf16Hex(line)}> Tj`);
+    }
+  });
+  commands.push('ET');
+
+  return commands.join('\n');
+}
+
+function buildPdf(objects: readonly string[]): string {
+  const header = '%PDF-1.4\n';
+  const bodyParts: string[] = [];
+  const offsets = [0];
+  let length = header.length;
+
+  objects.forEach((object, index) => {
+    offsets.push(length);
+    const objectText = `${index + 1} 0 obj\n${object}\nendobj\n`;
+
+    bodyParts.push(objectText);
+    length += objectText.length;
+  });
+
+  const xrefOffset = length;
+  const xrefEntries = offsets.map((offset, index) => {
+    if (index === 0) {
+      return '0000000000 65535 f ';
+    }
+
+    return `${String(offset).padStart(10, '0')} 00000 n `;
+  });
+  const trailer = `xref\n0 ${offsets.length}\n${xrefEntries.join(
+    '\n',
+  )}\ntrailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+
+  return `${header}${bodyParts.join('')}${trailer}`;
+}
+
+function wrapTextForPdf(text: string, maxCharsPerLine: number): string[] {
+  const output: string[] = [];
+
+  for (const rawLine of text.replace(/\r\n?/gu, '\n').split('\n')) {
+    if (rawLine.trim().length === 0) {
+      output.push('');
+      continue;
+    }
+
+    let currentLine = '';
+
+    for (const word of rawLine.split(/\s+/u)) {
+      if (word.length > maxCharsPerLine) {
+        if (currentLine.length > 0) {
+          output.push(currentLine);
+          currentLine = '';
+        }
+
+        for (let index = 0; index < word.length; index += maxCharsPerLine) {
+          output.push(word.slice(index, index + maxCharsPerLine));
+        }
+
+        continue;
+      }
+
+      const candidate = currentLine.length > 0 ? `${currentLine} ${word}` : word;
+
+      if (candidate.length > maxCharsPerLine) {
+        output.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = candidate;
+      }
+    }
+
+    if (currentLine.length > 0) {
+      output.push(currentLine);
+    }
+  }
+
+  return output;
+}
+
+function chunkLines(lines: readonly string[], chunkSize: number): string[][] {
+  const chunks: string[][] = [];
+
+  for (let index = 0; index < lines.length; index += chunkSize) {
+    chunks.push([...lines.slice(index, index + chunkSize)]);
+  }
+
+  return chunks;
+}
+
+function utf16Hex(value: string): string {
+  const bytes = [0xfe, 0xff];
+
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+
+    bytes.push((code >> 8) & 0xff, code & 0xff);
+  }
+
+  return bytes
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase();
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/gu, '&amp;')
+    .replace(/</gu, '&lt;')
+    .replace(/>/gu, '&gt;')
+    .replace(/"/gu, '&quot;')
+    .replace(/'/gu, '&#39;');
+}
+
+function shortDocumentId(documentId: string): string {
+  return documentId.slice(0, 8);
 }
