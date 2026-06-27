@@ -4,6 +4,7 @@ import { firstHeaderValue } from '../../common/utils/headers.js';
 import type { AuditService } from '../audit/audit.service.js';
 import type { AuthenticatedUser } from '../../common/guards/roles.js';
 import type { UserRepository } from '../users/user.repository.js';
+import { PUBLIC_ACCESS_USER_ID } from '../users/user.repository.js';
 import { AuthService } from './auth.service.js';
 import {
   clearSessionCookie,
@@ -67,6 +68,40 @@ export async function registerAuthRoutes(
     return {
       expiresAt: session.expiresAt.toISOString(),
       user: result.user,
+    };
+  });
+
+  app.post('/auth/public', async (request, reply) => {
+    const user = await options.userRepository.findById(PUBLIC_ACCESS_USER_ID);
+
+    if (!user?.isActive) {
+      return reply.code(503).send({ error: 'public_access_unavailable' });
+    }
+
+    const authenticatedUser: AuthenticatedUser = {
+      email: user.email,
+      id: user.id,
+      isActive: user.isActive,
+      role: user.role,
+    };
+    const session = options.sessionService.create(authenticatedUser);
+
+    options.auditService.record({
+      actorUserId: user.id,
+      action: 'login',
+      resourceType: 'session',
+      result: 'success',
+      metadata: { publicAccess: true, role: user.role },
+      ipHash: options.auditService.hashValue(request.ip),
+      userAgentHash: options.auditService.hashValue(
+        firstHeaderValue(request.headers['user-agent']),
+      ),
+    });
+    reply.header('set-cookie', serializeSessionCookie(session));
+
+    return {
+      expiresAt: session.expiresAt.toISOString(),
+      user: authenticatedUser,
     };
   });
 

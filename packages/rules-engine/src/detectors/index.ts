@@ -121,6 +121,17 @@ const regexRules: DetectorRule[] = [
   {
     category: 'identifier',
     confidence: 0.84,
+    entityType: 'phone',
+    pattern:
+      /\b(?:tel[eé]fono|telefono|telf\.?|tel\.?|celular|m[oó]vil|movil|fax)[:.\s-]*(\+?(?:\d[\s().-]?){5,12}\d)\b/giu,
+    replacementType: 'mask',
+    ruleId: 'phone-context-regex-v1',
+    transformMatch: (match) => match[1]?.trim() ?? match[0],
+    validate: isLikelyPhoneNumber,
+  },
+  {
+    category: 'identifier',
+    confidence: 0.84,
     entityType: 'foreigner_card',
     pattern: /\b(?:ce|carn[eé]\s+de\s+extranjer[ií]a)[:\s-]*(\d{9,12})\b/giu,
     replacementType: 'mask',
@@ -182,13 +193,25 @@ const regexRules: DetectorRule[] = [
   },
   {
     category: 'personal_data',
-    confidence: 0.7,
+    confidence: 0.82,
     entityType: 'person_name',
     pattern:
-      /\b(?:sr\.?|sra\.?|señor|señora|nombre)[:\s]+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\b/giu,
-    replacementType: 'pseudonymize',
+      /\b(?:denunciante|denunciado|denunciada|demandante|demandado|demandada|solicitante|administrado|administrada|reclamante|consumidor|consumidora|titular|apoderado|apoderada|representante)[:\s.-]+([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'-]+(?:[ \t]+[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'-]+){1,5})\b/giu,
+    replacementType: 'redact',
+    ruleId: 'legal-person-name-context-v1',
+    transformMatch: (match) => match[1] ?? match[0],
+    validate: isLikelyPersonName,
+  },
+  {
+    category: 'personal_data',
+    confidence: 0.74,
+    entityType: 'person_name',
+    pattern:
+      /\b(?:sr\.?|sra\.?|señor|señora|nombre|nombres|apellidos?)[:\s]+([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'-]+(?:[ \t]+[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'-]+){1,4})\b/giu,
+    replacementType: 'redact',
     ruleId: 'person-name-context-v1',
     transformMatch: (match) => match[1] ?? match[0],
+    validate: isLikelyPersonName,
   },
 ];
 
@@ -394,6 +417,71 @@ function dictionaryRule(
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+}
+
+function isLikelyPhoneNumber(value: string): boolean {
+  const digits = value.replace(/\D/gu, '');
+
+  return digits.length >= 6 && digits.length <= 11;
+}
+
+function isLikelyPersonName(value: string): boolean {
+  if (/\d/u.test(value)) {
+    return false;
+  }
+
+  const normalized = normalizeForRules(value);
+  const corporateMarkers = [
+    'ASOCIACION',
+    'BANCO',
+    'COMISION',
+    'EMPRESA',
+    'EIRL',
+    'FINANCIERA',
+    'INDECOPI',
+    'MUNICIPALIDAD',
+    'S A',
+    'SA',
+    'SAC',
+    'S R L',
+    'SRL',
+    'UNIVERSIDAD',
+  ];
+
+  if (corporateMarkers.some((marker) => normalized.includes(marker))) {
+    return false;
+  }
+
+  const tokens = normalized.split(/\s+/u).filter(Boolean);
+  const particles = new Set([
+    'DA',
+    'DE',
+    'DEL',
+    'DI',
+    'DOS',
+    'LA',
+    'LAS',
+    'LOS',
+    'VAN',
+    'VON',
+    'Y',
+  ]);
+
+  return (
+    tokens.length >= 2 &&
+    tokens.length <= 6 &&
+    tokens.every((token) => token.length >= 2 || particles.has(token))
+  );
+}
+
+function normalizeForRules(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/[^A-Z0-9\s]/giu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .toUpperCase();
 }
 
 function isLikelyCreditCard(value: string): boolean {

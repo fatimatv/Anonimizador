@@ -25,6 +25,12 @@ interface InMemoryUserRepositoryOptions {
   users?: UserRecord[];
 }
 
+export const PUBLIC_ACCESS_USER_ID = 'public-access-operator';
+export const PUBLIC_ACCESS_USER_EMAIL = 'uso-publico@anonimizador.local';
+
+const PUBLIC_ACCESS_PASSWORD_HASH =
+  '$argon2id$v=19$m=65536,t=3,p=4$ZjYJHLpFskwDZ+qlDiG5EQ$VqaCDi8Cc4s/iNqkJqrC5AEF/DZQVW0knU2hEwyq6Zg';
+
 export class InMemoryUserRepository implements UserRepository {
   private readonly lockAfterAttempts: number;
 
@@ -37,6 +43,8 @@ export class InMemoryUserRepository implements UserRepository {
   constructor(options: InMemoryUserRepositoryOptions = {}) {
     this.lockAfterAttempts = options.lockAfterAttempts ?? 5;
     this.lockMinutes = options.lockMinutes ?? 15;
+
+    this.upsert(createPublicAccessUser());
 
     for (const user of options.users ?? []) {
       this.upsert(user);
@@ -87,6 +95,22 @@ export class InMemoryUserRepository implements UserRepository {
     this.usersById.set(normalizedUser.id, normalizedUser);
     this.usersByEmail.set(normalizedUser.email, normalizedUser);
   }
+}
+
+function createPublicAccessUser(): UserRecord {
+  const now = new Date();
+
+  return {
+    createdAt: now,
+    email: PUBLIC_ACCESS_USER_EMAIL,
+    failedLoginAttempts: 0,
+    id: PUBLIC_ACCESS_USER_ID,
+    isActive: true,
+    lockedUntil: null,
+    passwordHash: PUBLIC_ACCESS_PASSWORD_HASH,
+    role: 'operator',
+    updatedAt: now,
+  };
 }
 
 export function createBootstrapUserRepository(): UserRepository {

@@ -110,12 +110,14 @@ describe('local detectors', () => {
   });
 
   it('detects mobile phone values', () => {
-    const result = detectSensitiveEntities('Telefono 987 654 321');
+    const result = detectSensitiveEntities(
+      'Telefono 987 654 321 y Telf.: 224 7800 / Fax: 224 0348',
+    );
 
-    expect(result.detections).toEqual([
-      expect.objectContaining({
-        entityType: 'phone',
-      }),
+    expect(result.detections.map((detection) => detection.entityType)).toEqual([
+      'phone',
+      'phone',
+      'phone',
     ]);
   });
 
@@ -180,6 +182,29 @@ describe('local detectors', () => {
       'address',
       'location_data',
     ]);
+  });
+
+  it('fully redacts legal person names with common party labels', () => {
+    const text = 'DENUNCIANTE : JUAN PEDRO VAN HASSELT DÁVILA\nDNI 12345678';
+    const detectionResult = detectSensitiveEntities(text);
+    const anonymized = anonymizeText({
+      detections: detectionResult.detections,
+      text,
+    });
+
+    expect(detectionResult.detections).toEqual([
+      expect.objectContaining({
+        entityType: 'person_name',
+        previewMasked: '[PERSON_NAME REDACTADO]',
+        replacementType: 'redact',
+      }),
+      expect.objectContaining({
+        entityType: 'dni',
+      }),
+    ]);
+    expect(anonymized.anonymizedText).toContain('[PERSON_NAME REDACTADO]');
+    expect(anonymized.anonymizedText).not.toContain('JUAN');
+    expect(anonymized.anonymizedText).not.toContain('HASSELT');
   });
 
   it('detects controlled dictionaries for sensitive data', () => {

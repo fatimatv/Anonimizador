@@ -184,6 +184,12 @@ body {
   color: var(--ialaw-blue);
 }
 
+.icon-button.is-active {
+  background: var(--ialaw-blue);
+  border-color: var(--ialaw-blue);
+  color: #ffffff;
+}
+
 .icon-button:disabled {
   cursor: not-allowed;
   opacity: 0.45;

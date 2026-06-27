@@ -117,6 +117,50 @@ describe('auth module', () => {
     ]);
   });
 
+  it('creates a temporary public operator session without credentials', async () => {
+    const { app, auditService } = await createAppWithUser({});
+
+    const publicResponse = await app.inject({
+      method: 'POST',
+      url: '/auth/public',
+    });
+
+    expect(publicResponse.statusCode).toBe(200);
+    expect(String(publicResponse.headers['set-cookie'])).toContain('HttpOnly');
+    expect(publicResponse.json()).toMatchObject({
+      user: {
+        email: 'uso-publico@anonimizador.local',
+        id: 'public-access-operator',
+        role: 'operator',
+      },
+    });
+
+    const meResponse = await app.inject({
+      headers: {
+        cookie: sessionCookieFrom(publicResponse.headers),
+      },
+      method: 'GET',
+      url: '/auth/me',
+    });
+
+    await app.close();
+
+    expect(meResponse.statusCode).toBe(200);
+    expect(meResponse.json()).toMatchObject({
+      user: {
+        id: 'public-access-operator',
+        role: 'operator',
+      },
+    });
+    expect(auditService.list()).toEqual([
+      expect.objectContaining({
+        action: 'login',
+        actorUserId: 'public-access-operator',
+        result: 'success',
+      }),
+    ]);
+  });
+
   it('rejects invalid credentials without auditing raw email or password', async () => {
     const { app, auditService } = await createAppWithUser({});
 
