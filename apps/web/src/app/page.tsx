@@ -668,7 +668,7 @@ function Notice(props: { message: string }) {
   return (
     <div className="mt-4 flex items-start gap-2 rounded-lg border border-[#FBBB02]/50 bg-[#fff8df] p-3 text-sm text-[#111827]">
       <AlertTriangle className="mt-0.5 shrink-0" size={16} aria-hidden="true" />
-      <span>{props.message}</span>
+      <span>{messageForNotice(props.message)}</span>
     </div>
   );
 }
@@ -706,6 +706,30 @@ function formatBytes(value: number): string {
   }
 
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function messageForNotice(message: string): string {
+  const messages: Record<string, string> = {
+    anonymized_file_not_ready: 'El documento anonimizado aun no esta listo.',
+    authentication_required: 'Tu sesion expiro. Vuelve a ingresar.',
+    document_not_approved: 'Aprueba el documento antes de descargarlo.',
+    document_not_found: 'No se encontro el documento.',
+    empty_batch: 'Selecciona al menos un documento.',
+    empty_file: 'El archivo esta vacio.',
+    file_too_large: 'El archivo supera el tamano permitido.',
+    insufficient_role: 'Tu usuario no tiene permisos para esta accion.',
+    invalid_credentials: 'Correo o contrasena incorrectos.',
+    invalid_payload: 'Revisa los datos ingresados.',
+    job_not_found: 'No se encontro la carga.',
+    login_temporarily_blocked: 'Ingreso bloqueado temporalmente por intentos fallidos.',
+    mime_mismatch: 'El contenido no coincide con el tipo de archivo.',
+    request_failed: 'No se pudo completar la solicitud.',
+    too_many_files: 'El lote supera la cantidad maxima permitida.',
+    unsafe_file_name: 'El nombre del archivo no es seguro.',
+    unsupported_extension: 'Formato no soportado. Usa TXT, PDF o DOCX.',
+  };
+
+  return messages[message] ?? message;
 }
 
 function downloadTextFile(documentId: string, text: string): void {
