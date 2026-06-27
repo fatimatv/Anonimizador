@@ -62,11 +62,7 @@ function hashText(text: string): string {
 }
 
 function ensurePdfJsPolyfills(): void {
-  const globalScope = globalThis as typeof globalThis & {
-    DOMMatrix?: typeof MinimalDOMMatrix;
-    ImageData?: typeof MinimalImageData;
-    Path2D?: typeof MinimalPath2D;
-  };
+  const globalScope = globalThis as Record<string, unknown>;
 
   globalScope.DOMMatrix ??= MinimalDOMMatrix;
   globalScope.ImageData ??= MinimalImageData;
