@@ -2,6 +2,13 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "pnpm --filter @document-anonymizer/rules-engine build && pnpm --filter @document-anonymizer/web build",
   "framework": "nextjs",
+  "functions": {
+    "api/**/*.ts": {
+      "includeFiles": [
+        "node_modules/.pnpm/pdfjs-dist@5.4.296/node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs"
+      ]
+    }
+  },
   "installCommand": "pnpm install --frozen-lockfile",
   "outputDirectory": "apps/web/.next",
   "rewrites": [
