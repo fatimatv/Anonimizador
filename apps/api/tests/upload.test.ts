@@ -592,7 +592,65 @@ describe('upload module', () => {
     expect(extractedOutput.text).not.toContain('12345678');
   });
 
-  it('allows only reviewers and admins to preview anonymized text before approval', async () => {
+  it('allows the uploader to preview, approve, and download their own anonymized document', async () => {
+    const { app, cookieHeader } = await createUploadTestApp();
+    const multipart = multipartPayload([
+      {
+        content: 'DNI 12345678 para autoservicio.',
+        filename: 'autoservicio.txt',
+        mimeType: 'text/plain',
+      },
+    ]);
+
+    const uploadResponse = await app.inject({
+      headers: {
+        'content-type': multipart.contentType,
+        cookie: cookieHeader,
+      },
+      method: 'POST',
+      payload: multipart.payload,
+      url: '/uploads/batch',
+    });
+    const documentId = uploadResponse.json().documents[0].id as string;
+    const previewResponse = await app.inject({
+      headers: { cookie: cookieHeader },
+      method: 'GET',
+      url: `/review/documents/${documentId}/anonymized-preview`,
+    });
+    const approvalResponse = await app.inject({
+      headers: { cookie: cookieHeader },
+      method: 'POST',
+      url: `/review/documents/${documentId}/approve`,
+    });
+    const downloadResponse = await app.inject({
+      headers: { cookie: cookieHeader },
+      method: 'GET',
+      url: `/documents/${documentId}/download-anonymized`,
+    });
+
+    await app.close();
+
+    expect(previewResponse.statusCode).toBe(200);
+    expect(previewResponse.json()).toMatchObject({
+      document: {
+        id: documentId,
+        status: 'needs_review',
+      },
+      text: expect.stringContaining('****5678'),
+    });
+    expect(approvalResponse.statusCode).toBe(200);
+    expect(approvalResponse.json()).toMatchObject({
+      document: {
+        id: documentId,
+        status: 'approved',
+      },
+    });
+    expect(downloadResponse.statusCode).toBe(200);
+    expect(downloadResponse.body).toContain('****5678');
+    expect(downloadResponse.body).not.toContain('12345678');
+  });
+
+  it('allows reviewers and admins to preview anonymized text before approval', async () => {
     const { app, cookieHeader } = await createUploadTestApp('admin');
     const multipart = multipartPayload([
       {

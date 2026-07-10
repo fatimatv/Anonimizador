@@ -220,12 +220,6 @@ export async function registerJobRoutes(
       return reply.code(401).send({ error: 'authentication_required' });
     }
 
-    if (!canAccessRole(currentUser, ['admin', 'reviewer'])) {
-      recordReviewBlocked(currentUser, options);
-
-      return reply.code(403).send({ error: 'insufficient_role' });
-    }
-
     const documentContext = await getDocumentContext(request, options);
 
     if ('error' in documentContext) {
@@ -233,6 +227,12 @@ export async function registerJobRoutes(
     }
 
     const { document, job } = documentContext;
+
+    if (!canReviewJob(currentUser, job)) {
+      recordReviewBlocked(currentUser, options);
+
+      return reply.code(403).send({ error: 'insufficient_role' });
+    }
 
     if (!document.anonymizedStorageKey) {
       return reply.code(409).send({ error: 'anonymized_file_not_ready' });
@@ -261,12 +261,6 @@ export async function registerJobRoutes(
       return reply.code(401).send({ error: 'authentication_required' });
     }
 
-    if (!canAccessRole(currentUser, ['admin', 'reviewer'])) {
-      recordReviewBlocked(currentUser, options);
-
-      return reply.code(403).send({ error: 'insufficient_role' });
-    }
-
     const documentContext = await getDocumentContext(request, options);
 
     if ('error' in documentContext) {
@@ -274,6 +268,13 @@ export async function registerJobRoutes(
     }
 
     const { document, job } = documentContext;
+
+    if (!canReviewJob(currentUser, job)) {
+      recordReviewBlocked(currentUser, options);
+
+      return reply.code(403).send({ error: 'insufficient_role' });
+    }
+
     const body = request.body as { text?: unknown };
 
     if (typeof body.text !== 'string' || body.text.trim().length === 0) {
@@ -344,12 +345,6 @@ export async function registerJobRoutes(
       return reply.code(401).send({ error: 'authentication_required' });
     }
 
-    if (!canAccessRole(currentUser, ['admin', 'reviewer'])) {
-      recordReviewBlocked(currentUser, options);
-
-      return reply.code(403).send({ error: 'insufficient_role' });
-    }
-
     const documentContext = await getDocumentContext(request, options);
 
     if ('error' in documentContext) {
@@ -357,6 +352,12 @@ export async function registerJobRoutes(
     }
 
     const { document, job } = documentContext;
+
+    if (!canReviewJob(currentUser, job)) {
+      recordReviewBlocked(currentUser, options);
+
+      return reply.code(403).send({ error: 'insufficient_role' });
+    }
 
     if (!document.anonymizedStorageKey) {
       return reply.code(409).send({ error: 'anonymized_file_not_ready' });
@@ -394,12 +395,6 @@ export async function registerJobRoutes(
       return reply.code(401).send({ error: 'authentication_required' });
     }
 
-    if (!canAccessRole(currentUser, ['admin', 'reviewer'])) {
-      recordReviewBlocked(currentUser, options);
-
-      return reply.code(403).send({ error: 'insufficient_role' });
-    }
-
     const documentContext = await getDocumentContext(request, options);
 
     if ('error' in documentContext) {
@@ -407,6 +402,13 @@ export async function registerJobRoutes(
     }
 
     const { document, job } = documentContext;
+
+    if (!canReviewJob(currentUser, job)) {
+      recordReviewBlocked(currentUser, options);
+
+      return reply.code(403).send({ error: 'insufficient_role' });
+    }
+
     const updatedDocument = await options.jobRepository.updateDocumentStatus(
       document.id,
       'rejected',
@@ -453,6 +455,12 @@ function canReadJob(currentUser: AuthenticatedUser, job: JobRecord): boolean {
 
 function canDeleteJob(currentUser: AuthenticatedUser, job: JobRecord): boolean {
   return currentUser.id === job.createdByUserId || canAccessRole(currentUser, ['admin']);
+}
+
+function canReviewJob(currentUser: AuthenticatedUser, job: JobRecord): boolean {
+  return (
+    currentUser.id === job.createdByUserId || canAccessRole(currentUser, ['admin', 'reviewer'])
+  );
 }
 
 function toMaskedDetection(detection: DetectedEntityRecord) {

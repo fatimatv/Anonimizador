@@ -79,7 +79,10 @@ export default function HomePage() {
     return jobDetail?.documents.find((document) => document.id === selectedDocumentId) ?? null;
   }, [jobDetail, selectedDocumentId]);
   const canUpload = user?.role === 'admin' || user?.role === 'operator';
-  const canReview = user?.role === 'admin' || user?.role === 'reviewer';
+  const canReview =
+    user?.role === 'admin' ||
+    user?.role === 'reviewer' ||
+    (user?.role === 'operator' && jobDetail?.job.status === 'needs_review');
 
   const showError = useCallback((error: unknown) => {
     if (error instanceof ApiError) {
