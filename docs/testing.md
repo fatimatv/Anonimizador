@@ -65,4 +65,4 @@ Fase 8:
 
 ## Persistencia
 
-Las pruebas unitarias cubren que los repositorios Prisma normalicen usuarios, persistan lockouts y escriban jobs/detecciones con metadatos seguros. Una prueba de integracion con PostgreSQL real debe ejecutarse en una fase de CI con servicio `postgres` si se quiere validar migraciones contra base viva.
+Las pruebas unitarias cubren que los repositorios Prisma normalicen usuarios, persistan lockouts y escriban jobs/detecciones con metadatos seguros. CI ejecuta tambien `pnpm --filter @document-anonymizer/api test:integration` contra un servicio PostgreSQL real despues de aplicar migraciones.

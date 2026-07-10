@@ -30,4 +30,8 @@ tmp-storage/users/{userIdHash}/jobs/{jobId}/original/{uuid}.{ext}
 ```
 
 El nombre original se reemplaza por hash en metadatos. La limpieza automatica y eliminacion manual quedan para la fase de hardening.
-El nombre original se reemplaza por hash en metadatos. La eliminacion manual borra originales y anonimizados, marca el job como eliminado y registra auditoria no sensible. La limpieza automatica por TTL se ejecuta fuera del entorno de pruebas y queda desactivada en el adaptador serverless de Vercel, por lo que una version productiva con storage persistente debe mover esta limpieza a un worker/cron dedicado.
+El nombre original se reemplaza por hash en metadatos. La eliminacion manual borra originales y anonimizados, marca el job como eliminado y registra auditoria no sensible. La limpieza automatica por TTL se ejecuta fuera del entorno de pruebas. En entornos serverless se debe programar una corrida dedicada con:
+
+```bash
+pnpm --filter @document-anonymizer/api cleanup:retention
+```

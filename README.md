@@ -40,6 +40,7 @@ docs/
 pnpm install
 pnpm --filter @document-anonymizer/api prisma:migrate
 pnpm dev
+pnpm --filter @document-anonymizer/api worker
 pnpm build
 pnpm typecheck
 pnpm lint
@@ -98,7 +99,18 @@ Controles actuales:
 
 ## Procesamiento local
 
-Tras un upload valido, la API encola cada documento para extraccion local de texto. En desarrollo y pruebas se usa una cola en memoria; tambien queda disponible un adaptador BullMQ para conectar Redis sin cambiar los servicios de procesamiento.
+Tras un upload valido, la API encola cada documento para extraccion local de texto. En desarrollo y pruebas se usa una cola en memoria. En produccion se puede activar BullMQ/Redis con:
+
+```env
+PROCESSING_QUEUE_DRIVER=bullmq
+REDIS_URL=redis://...
+```
+
+El worker separado se ejecuta con:
+
+```bash
+pnpm --filter @document-anonymizer/api worker
+```
 
 Controles actuales:
 
@@ -162,6 +174,10 @@ pnpm --filter @document-anonymizer/api prisma:migrate
 
 Si `DATABASE_URL` no existe, la API conserva repositorios en memoria para desarrollo temprano y pruebas.
 
-## Siguiente fase
+## Operacion productiva
 
-La siguiente fase debe preparar despliegue con API, base de datos y Redis separados, y mover la limpieza TTL serverless a un worker o cron dedicado.
+El despliegue productivo debe correr al menos tres procesos/entradas: API, worker BullMQ y limpieza TTL programada. La limpieza TTL de una sola corrida para cron/worker dedicado se ejecuta con:
+
+```bash
+pnpm --filter @document-anonymizer/api cleanup:retention
+```

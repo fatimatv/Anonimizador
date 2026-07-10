@@ -5,39 +5,24 @@ import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { pathToFileURL } from 'node:url';
 import { firstHeaderValue } from './common/utils/headers.js';
-import { disconnectPrismaClient, getPrismaClient } from './infrastructure/prisma.js';
 import { registerAuditRoutes } from './modules/audit/audit.routes.js';
-import {
-  AuditService,
-  PrismaAuditService,
-  resolveAuditHashSecret,
-} from './modules/audit/audit.service.js';
-import { AnonymizationService } from './modules/anonymization/anonymization.service.js';
+import type { AuditService } from './modules/audit/audit.service.js';
 import { getCurrentUserFromRequest, registerAuthRoutes } from './modules/auth/auth.routes.js';
 import { DeletionService } from './modules/deletion/deletion.service.js';
-import { InMemoryJobRepository, type JobRepository } from './modules/documents/job.repository.js';
-import { PrismaJobRepository } from './modules/documents/prisma-job.repository.js';
+import type { JobRepository } from './modules/documents/job.repository.js';
 import { registerJobRoutes } from './modules/documents/job.routes.js';
-import { DetectionService } from './modules/detection/detection.service.js';
 import {
+  createBullMqProcessingQueueFromEnv,
   InMemoryProcessingQueue,
   type ProcessingQueue,
 } from './modules/processing/processing.queue.js';
-import { ProcessingService } from './modules/processing/processing.service.js';
-import { TextExtractionService } from './modules/processing/text-extraction.service.js';
-import {
-  createStorageServiceFromEnv,
-  type StorageService,
-} from './modules/storage/storage.service.js';
+import type { ProcessingService } from './modules/processing/processing.service.js';
+import type { StorageService } from './modules/storage/storage.service.js';
 import { FileValidationService } from './modules/upload/file-validation.service.js';
 import { registerUploadRoutes } from './modules/upload/upload.routes.js';
 import { resolveUploadLimits } from './modules/upload/upload.config.js';
-import {
-  createBootstrapUserRepository,
-  PrismaUserRepository,
-  seedBootstrapUsers,
-  type UserRepository,
-} from './modules/users/user.repository.js';
+import type { UserRepository } from './modules/users/user.repository.js';
+import { closeRuntimeServices, createRuntimeServices } from './runtime/services.js';
 import { createSessionServiceFromEnv, type SessionService } from './security/session.js';
 
 const DEFAULT_PORT = 3001;
@@ -151,47 +136,44 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     status: 'ok',
   }));
 
-  const prisma = shouldUsePrisma(options) ? getPrismaClient() : null;
+  const runtimeServiceOptions: Parameters<typeof createRuntimeServices>[0] = {};
 
-  if (prisma) {
-    await seedBootstrapUsers(prisma);
-    app.addHook('onClose', async () => {
-      await disconnectPrismaClient();
-    });
+  if (options.auditService) {
+    runtimeServiceOptions.auditService = options.auditService;
   }
 
-  const auditService =
-    options.auditService ??
-    (prisma
-      ? new PrismaAuditService(resolveAuditHashSecret(), prisma)
-      : new AuditService(resolveAuditHashSecret()));
-  const jobRepository =
-    options.jobRepository ??
-    (prisma ? new PrismaJobRepository(prisma) : new InMemoryJobRepository());
+  if (options.jobRepository) {
+    runtimeServiceOptions.jobRepository = options.jobRepository;
+  }
+
+  if (options.storageService) {
+    runtimeServiceOptions.storageService = options.storageService;
+  }
+
+  if (options.userRepository) {
+    runtimeServiceOptions.userRepository = options.userRepository;
+  }
+
+  const runtimeServices = await createRuntimeServices(runtimeServiceOptions);
+  app.addHook('onClose', async () => {
+    await closeRuntimeServices();
+  });
+
+  const {
+    auditService,
+    deletionService,
+    jobRepository,
+    processingService,
+    storageService,
+    userRepository,
+  } = runtimeServices;
   const sessionService = options.sessionService ?? createSessionServiceFromEnv();
-  const storageService = options.storageService ?? createStorageServiceFromEnv();
-  const userRepository =
-    options.userRepository ??
-    (prisma ? new PrismaUserRepository(prisma) : createBootstrapUserRepository());
-  const deletionService =
-    options.deletionService ??
-    new DeletionService({
-      auditService,
-      jobRepository,
-      storageService,
-    });
+  const resolvedDeletionService = options.deletionService ?? deletionService;
   const processingQueue =
-    options.processingQueue ??
-    new InMemoryProcessingQueue(
-      new ProcessingService({
-        auditService,
-        anonymizationService: new AnonymizationService(),
-        detectionService: new DetectionService(),
-        jobRepository,
-        storageService,
-        textExtractionService: new TextExtractionService(),
-      }),
-    );
+    options.processingQueue ?? createProcessingQueueFromEnv(processingService);
+  app.addHook('onClose', async () => {
+    await processingQueue.close?.();
+  });
   const authOptions = {
     auditService,
     sessionService,
@@ -205,7 +187,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
   await registerJobRoutes(app, {
     auditService,
-    deletionService,
+    deletionService: resolvedDeletionService,
     getCurrentUser: (request) => getCurrentUserFromRequest(request, authOptions),
     jobRepository,
     storageService,
@@ -221,18 +203,18 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     uploadLimits,
   });
   if (options.enableRetentionCleanup ?? process.env.VERCEL !== '1') {
-    registerRetentionCleanup(app, deletionService);
+    registerRetentionCleanup(app, resolvedDeletionService);
   }
 
   return app;
 }
 
-function shouldUsePrisma(options: BuildAppOptions): boolean {
-  if (options.jobRepository || options.userRepository || options.auditService) {
-    return false;
+function createProcessingQueueFromEnv(processingService: ProcessingService): ProcessingQueue {
+  if (process.env.PROCESSING_QUEUE_DRIVER === 'bullmq') {
+    return createBullMqProcessingQueueFromEnv();
   }
 
-  return Boolean(process.env.DATABASE_URL) && process.env.NODE_ENV !== 'test';
+  return new InMemoryProcessingQueue(processingService);
 }
 
 function registerRetentionCleanup(app: FastifyInstance, deletionService: DeletionService): void {

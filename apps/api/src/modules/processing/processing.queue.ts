@@ -2,6 +2,7 @@ import { Queue, Worker, type JobsOptions, type QueueOptions, type WorkerOptions 
 import type { ProcessingService } from './processing.service.js';
 
 export interface ProcessingQueue {
+  close?(): Promise<void>;
   enqueueDocument(documentId: string): Promise<void>;
 }
 
@@ -26,10 +27,20 @@ export class BullMqProcessingQueue implements ProcessingQueue {
   async enqueueDocument(documentId: string): Promise<void> {
     await this.queue.add('extract-text', { documentId }, this.jobOptions);
   }
+
+  async close(): Promise<void> {
+    await this.queue.close();
+  }
 }
 
 export function createBullMqProcessingQueue(options: QueueOptions): BullMqProcessingQueue {
   return new BullMqProcessingQueue(new Queue('document-processing', options));
+}
+
+export function createBullMqProcessingQueueFromEnv(): BullMqProcessingQueue {
+  return createBullMqProcessingQueue({
+    connection: createRedisConnectionOptionsFromEnv(),
+  });
 }
 
 export function createBullMqProcessingWorker(
@@ -43,4 +54,32 @@ export function createBullMqProcessingWorker(
     },
     options,
   );
+}
+
+export function createBullMqProcessingWorkerFromEnv(
+  processingService: ProcessingService,
+): Worker<{ documentId: string }> {
+  return createBullMqProcessingWorker(processingService, {
+    connection: createRedisConnectionOptionsFromEnv(),
+  });
+}
+
+export function createRedisConnectionOptionsFromEnv(): NonNullable<QueueOptions['connection']> {
+  const redisUrl = process.env.REDIS_URL;
+
+  if (!redisUrl) {
+    throw new Error('REDIS_URL is required for BullMQ processing');
+  }
+
+  const parsedUrl = new URL(redisUrl);
+
+  return {
+    db: parsedUrl.pathname.length > 1 ? Number(parsedUrl.pathname.slice(1)) : 0,
+    host: parsedUrl.hostname,
+    maxRetriesPerRequest: null,
+    password: parsedUrl.password ? decodeURIComponent(parsedUrl.password) : undefined,
+    port: parsedUrl.port ? Number(parsedUrl.port) : 6379,
+    tls: parsedUrl.protocol === 'rediss:' ? {} : undefined,
+    username: parsedUrl.username ? decodeURIComponent(parsedUrl.username) : undefined,
+  } satisfies NonNullable<QueueOptions['connection']>;
 }

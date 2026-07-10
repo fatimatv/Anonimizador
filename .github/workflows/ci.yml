@@ -23,8 +23,18 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
     env:
       DATABASE_URL: postgresql://anonimizador:anonimizador_ci_password@localhost:5432/anonimizador?schema=public
+      REDIS_URL: redis://localhost:6379
 
     steps:
       - name: Checkout
@@ -58,6 +68,9 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Prisma integration test
+        run: pnpm --filter @document-anonymizer/api test:integration
 
       - name: Build
         run: pnpm build
