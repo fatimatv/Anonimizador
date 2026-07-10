@@ -1,6 +1,7 @@
 # Pruebas
 
 La Fase 3 deja scripts de prueba y cobertura inicial de salud, autenticacion, sesiones, roles, auditoria no sensible, upload seguro y extraccion local.
+El repositorio incluye CI en GitHub Actions para formato, lint, typecheck, tests y build.
 
 ## Comandos
 
@@ -56,3 +57,12 @@ Fase 8:
 - verificacion de inaccesibilidad;
 - rate limit;
 - headers de seguridad.
+- acceso publico desactivable;
+- bloqueo por `Origin` inesperado;
+- preview de revision protegido;
+- hashes HMAC para detecciones cuando se configura secreto.
+- contratos de repositorios Prisma mediante mocks del cliente.
+
+## Persistencia
+
+Las pruebas unitarias cubren que los repositorios Prisma normalicen usuarios, persistan lockouts y escriban jobs/detecciones con metadatos seguros. Una prueba de integracion con PostgreSQL real debe ejecutarse en una fase de CI con servicio `postgres` si se quiere validar migraciones contra base viva.

@@ -24,6 +24,7 @@ import {
   currentSession,
   deleteJob,
   downloadAnonymized,
+  getAnonymizedPreview,
   getDetections,
   getJob,
   login,
@@ -64,6 +65,7 @@ export default function HomePage() {
   const [jobDetail, setJobDetail] = useState<JobDetail | null>(null);
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [detections, setDetections] = useState<DetectionItem[]>([]);
+  const [anonymizedPreview, setAnonymizedPreview] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<MainTab>('workspace');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -71,15 +73,8 @@ export default function HomePage() {
   const selectedDocument = useMemo(() => {
     return jobDetail?.documents.find((document) => document.id === selectedDocumentId) ?? null;
   }, [jobDetail, selectedDocumentId]);
-  const isLocalJob = useMemo(() => {
-    return jobDetail?.documents.some((document) => document.anonymizedText !== undefined) ?? false;
-  }, [jobDetail]);
-
   const canUpload = user?.role === 'admin' || user?.role === 'operator';
-  const canReview =
-    user?.role === 'admin' ||
-    user?.role === 'reviewer' ||
-    (isLocalJob && user?.role === 'operator');
+  const canReview = user?.role === 'admin' || user?.role === 'reviewer';
 
   const showError = useCallback((error: unknown) => {
     if (error instanceof ApiError) {
@@ -95,17 +90,12 @@ export default function HomePage() {
       return;
     }
 
-    if (isLocalJob) {
-      setNotice('Los resultados de esta carga ya estan actualizados');
-      return;
-    }
-
     try {
       setJobDetail(await getJob(jobDetail.job.id));
     } catch (error) {
       showError(error);
     }
-  }, [isLocalJob, jobDetail?.job.id, showError]);
+  }, [jobDetail?.job.id, showError]);
 
   useEffect(() => {
     currentSession()
@@ -116,6 +106,7 @@ export default function HomePage() {
   useEffect(() => {
     if (!selectedDocumentId) {
       setDetections([]);
+      setAnonymizedPreview(null);
       return;
     }
 
@@ -128,6 +119,17 @@ export default function HomePage() {
       .then((result) => setDetections(result.detections))
       .catch((error) => showError(error));
   }, [selectedDocument, selectedDocumentId, showError]);
+
+  useEffect(() => {
+    if (!selectedDocumentId || !canReview || selectedDocument?.status !== 'needs_review') {
+      setAnonymizedPreview(null);
+      return;
+    }
+
+    getAnonymizedPreview(selectedDocumentId)
+      .then((result) => setAnonymizedPreview(result.text))
+      .catch((error) => showError(error));
+  }, [canReview, selectedDocument?.status, selectedDocumentId, showError]);
 
   useEffect(() => {
     if (uploadMode === 'single' && files.length > 1) {
@@ -177,6 +179,7 @@ export default function HomePage() {
       setJobDetail(null);
       setSelectedDocumentId(null);
       setDetections([]);
+      setAnonymizedPreview(null);
       setActiveTab('workspace');
     } catch (error) {
       showError(error);
@@ -209,41 +212,11 @@ export default function HomePage() {
     }
   }
 
-  function updateLocalDocumentStatus(documentId: string, status: 'approved' | 'rejected') {
-    setJobDetail((currentDetail) => {
-      if (!currentDetail) {
-        return currentDetail;
-      }
-
-      const documents = currentDetail.documents.map((document) => {
-        return document.id === documentId ? { ...document, status } : document;
-      });
-      const reviewedDocuments = documents.filter((document) => {
-        return document.status === 'approved' || document.status === 'rejected';
-      });
-
-      return {
-        documents,
-        job: {
-          ...currentDetail.job,
-          status:
-            reviewedDocuments.length === documents.length ? 'completed' : currentDetail.job.status,
-        },
-      };
-    });
-    setNotice(status === 'approved' ? 'Documento aprobado' : 'Documento rechazado');
-  }
-
   async function handleReview(documentId: string, action: 'approve' | 'reject') {
     setBusy(true);
     setNotice(null);
 
     try {
-      if (isLocalJob) {
-        updateLocalDocumentStatus(documentId, action === 'approve' ? 'approved' : 'rejected');
-        return;
-      }
-
       if (action === 'approve') {
         await approveDocument(documentId);
       } else {
@@ -263,17 +236,9 @@ export default function HomePage() {
     setNotice(null);
 
     try {
-      const localDocument = jobDetail?.documents.find((document) => document.id === documentId);
-
-      if (localDocument?.anonymizedText !== undefined) {
-        downloadLocalAnonymizedDocument(localDocument, localDocument.anonymizedText ?? '');
-        return;
-      }
-
       const blob = await downloadAnonymized(documentId);
-      const extension = outputExtensionFor(localDocument);
 
-      downloadBlob(blob, `anonimizado-${shortDocumentId(documentId)}${extension}`);
+      downloadBlob(blob, `anonimizado-${shortDocumentId(documentId)}.txt`);
     } catch (error) {
       showError(error);
     } finally {
@@ -290,18 +255,11 @@ export default function HomePage() {
     setNotice(null);
 
     try {
-      if (isLocalJob) {
-        setJobDetail(null);
-        setSelectedDocumentId(null);
-        setDetections([]);
-        setNotice('Carga eliminada');
-        return;
-      }
-
       await deleteJob(jobDetail.job.id);
       setJobDetail(null);
       setSelectedDocumentId(null);
       setDetections([]);
+      setAnonymizedPreview(null);
       setNotice('Job eliminado');
     } catch (error) {
       showError(error);
@@ -582,7 +540,7 @@ export default function HomePage() {
                       />
                     ))}
                   </div>
-                  <ReviewPanel document={selectedDocument} />
+                  <ReviewPanel document={selectedDocument} anonymizedPreview={anonymizedPreview} />
                 </div>
                 <DetectionPanel document={selectedDocument} detections={detections} />
               </div>
@@ -691,9 +649,8 @@ function DocumentStat(props: { label: string; value: string }) {
   );
 }
 
-function ReviewPanel(props: { document: DocumentItem | null }) {
+function ReviewPanel(props: { anonymizedPreview: string | null; document: DocumentItem | null }) {
   const document = props.document;
-  const anonymizedText = document?.anonymizedText ?? '';
   const totalEntities = document?.detectionSummary?.totalEntities ?? 0;
   const replacements = document?.validationSummary?.anonymization?.replacementsApplied ?? 0;
 
@@ -719,7 +676,10 @@ function ReviewPanel(props: { document: DocumentItem | null }) {
       <div className="mt-4 min-h-[360px] max-h-[560px] overflow-auto rounded-md border border-[#dfe3ef] bg-[#f8fafc]">
         {document ? (
           <pre className="whitespace-pre-wrap break-words p-4 font-mono text-sm leading-6 text-[#111827]">
-            {anonymizedText || 'Documento sin texto anonimizado disponible.'}
+            {props.anonymizedPreview ||
+              (document.status === 'needs_review'
+                ? 'Vista disponible solo para administradores o revisores.'
+                : 'Documento sin texto anonimizado disponible.')}
           </pre>
         ) : (
           <p className="p-4 text-sm text-[#6F7072]">Selecciona un documento.</p>
@@ -912,11 +872,13 @@ function messageForNotice(message: string): string {
     authentication_required: 'Tu sesion expiro. Vuelve a ingresar.',
     document_not_approved: 'Aprueba el documento antes de descargarlo.',
     document_not_found: 'No se encontro el documento.',
+    document_not_ready_for_review: 'El documento aun no esta listo para revision.',
     empty_batch: 'Selecciona al menos un documento.',
     empty_file: 'El archivo esta vacio.',
     file_too_large: 'El archivo supera el tamano permitido.',
     insufficient_role: 'Tu usuario no tiene permisos para esta accion.',
     invalid_credentials: 'Correo o contrasena incorrectos.',
+    invalid_origin: 'La solicitud fue bloqueada por origen no permitido.',
     invalid_payload: 'Revisa los datos ingresados.',
     job_not_found: 'No se encontro la carga.',
     login_temporarily_blocked: 'Ingreso bloqueado temporalmente por intentos fallidos.',
@@ -931,18 +893,6 @@ function messageForNotice(message: string): string {
   return messages[message] ?? message;
 }
 
-function downloadLocalAnonymizedDocument(document: DocumentItem, text: string): void {
-  const extension = outputExtensionFor(document);
-  const blob =
-    extension === '.pdf'
-      ? createPdfBlob(text)
-      : extension === '.doc'
-        ? createWordBlob(text)
-        : new Blob([text], { type: 'text/plain;charset=utf-8' });
-
-  downloadBlob(blob, `anonimizado-${shortDocumentId(document.id)}${extension}`);
-}
-
 function downloadBlob(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
@@ -951,212 +901,6 @@ function downloadBlob(blob: Blob, fileName: string): void {
   anchor.download = fileName;
   anchor.click();
   URL.revokeObjectURL(url);
-}
-
-function outputExtensionFor(document: DocumentItem | null | undefined): '.doc' | '.pdf' | '.txt' {
-  const extension = document?.validationSummary?.extension?.toLowerCase();
-  const mimeType = document?.mimeType;
-
-  if (extension === '.pdf' || mimeType === 'application/pdf') {
-    return '.pdf';
-  }
-
-  if (
-    extension === '.docx' ||
-    mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-  ) {
-    return '.doc';
-  }
-
-  return '.txt';
-}
-
-function createWordBlob(text: string): Blob {
-  const html = `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body { font-family: Arial, sans-serif; font-size: 12pt; line-height: 1.5; }
-    pre { font-family: Arial, sans-serif; white-space: pre-wrap; word-wrap: break-word; }
-  </style>
-</head>
-<body>
-  <pre>${escapeHtml(text)}</pre>
-</body>
-</html>`;
-
-  return new Blob(['\ufeff', html], { type: 'application/msword;charset=utf-8' });
-}
-
-function createPdfBlob(text: string): Blob {
-  const pageWidth = 595.28;
-  const pageHeight = 841.89;
-  const margin = 48;
-  const fontSize = 11;
-  const lineHeight = 15;
-  const maxCharsPerLine = 92;
-  const maxLinesPerPage = Math.floor((pageHeight - margin * 2) / lineHeight);
-  const lines = wrapTextForPdf(text, maxCharsPerLine);
-  const pages = chunkLines(lines.length > 0 ? lines : [''], maxLinesPerPage);
-  const objects: string[] = [
-    '<< /Type /Catalog /Pages 2 0 R >>',
-    '',
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-  ];
-  const pageObjectIds: number[] = [];
-
-  pages.forEach((pageLines, index) => {
-    const pageObjectId = 4 + index * 2;
-    const contentObjectId = pageObjectId + 1;
-    const content = pdfContentStream(pageLines, {
-      fontSize,
-      lineHeight,
-      margin,
-      pageHeight,
-    });
-
-    pageObjectIds.push(pageObjectId);
-    objects[pageObjectId - 1] =
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentObjectId} 0 R >>`;
-    objects[contentObjectId - 1] = `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
-  });
-
-  objects[1] = `<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pageObjectIds.length} >>`;
-
-  return new Blob([buildPdf(objects)], { type: 'application/pdf' });
-}
-
-function pdfContentStream(
-  lines: readonly string[],
-  options: { fontSize: number; lineHeight: number; margin: number; pageHeight: number },
-): string {
-  const firstBaseline = options.pageHeight - options.margin;
-  const commands = [
-    'BT',
-    `/F1 ${options.fontSize} Tf`,
-    `${options.margin} ${firstBaseline} Td`,
-    `${options.lineHeight} TL`,
-  ];
-
-  lines.forEach((line, index) => {
-    if (index > 0) {
-      commands.push('T*');
-    }
-
-    if (line.length > 0) {
-      commands.push(`<${utf16Hex(line)}> Tj`);
-    }
-  });
-  commands.push('ET');
-
-  return commands.join('\n');
-}
-
-function buildPdf(objects: readonly string[]): string {
-  const header = '%PDF-1.4\n';
-  const bodyParts: string[] = [];
-  const offsets = [0];
-  let length = header.length;
-
-  objects.forEach((object, index) => {
-    offsets.push(length);
-    const objectText = `${index + 1} 0 obj\n${object}\nendobj\n`;
-
-    bodyParts.push(objectText);
-    length += objectText.length;
-  });
-
-  const xrefOffset = length;
-  const xrefEntries = offsets.map((offset, index) => {
-    if (index === 0) {
-      return '0000000000 65535 f ';
-    }
-
-    return `${String(offset).padStart(10, '0')} 00000 n `;
-  });
-  const trailer = `xref\n0 ${offsets.length}\n${xrefEntries.join(
-    '\n',
-  )}\ntrailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-
-  return `${header}${bodyParts.join('')}${trailer}`;
-}
-
-function wrapTextForPdf(text: string, maxCharsPerLine: number): string[] {
-  const output: string[] = [];
-
-  for (const rawLine of text.replace(/\r\n?/gu, '\n').split('\n')) {
-    if (rawLine.trim().length === 0) {
-      output.push('');
-      continue;
-    }
-
-    let currentLine = '';
-
-    for (const word of rawLine.split(/\s+/u)) {
-      if (word.length > maxCharsPerLine) {
-        if (currentLine.length > 0) {
-          output.push(currentLine);
-          currentLine = '';
-        }
-
-        for (let index = 0; index < word.length; index += maxCharsPerLine) {
-          output.push(word.slice(index, index + maxCharsPerLine));
-        }
-
-        continue;
-      }
-
-      const candidate = currentLine.length > 0 ? `${currentLine} ${word}` : word;
-
-      if (candidate.length > maxCharsPerLine) {
-        output.push(currentLine);
-        currentLine = word;
-      } else {
-        currentLine = candidate;
-      }
-    }
-
-    if (currentLine.length > 0) {
-      output.push(currentLine);
-    }
-  }
-
-  return output;
-}
-
-function chunkLines(lines: readonly string[], chunkSize: number): string[][] {
-  const chunks: string[][] = [];
-
-  for (let index = 0; index < lines.length; index += chunkSize) {
-    chunks.push([...lines.slice(index, index + chunkSize)]);
-  }
-
-  return chunks;
-}
-
-function utf16Hex(value: string): string {
-  const bytes = [0xfe, 0xff];
-
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index);
-
-    bytes.push((code >> 8) & 0xff, code & 0xff);
-  }
-
-  return bytes
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('')
-    .toUpperCase();
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/gu, '&amp;')
-    .replace(/</gu, '&lt;')
-    .replace(/>/gu, '&gt;')
-    .replace(/"/gu, '&quot;')
-    .replace(/'/gu, '&#39;');
 }
 
 function shortDocumentId(documentId: string): string {

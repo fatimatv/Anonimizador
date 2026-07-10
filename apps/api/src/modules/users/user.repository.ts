@@ -1,3 +1,4 @@
+import type { PrismaClient, User as PrismaUser } from '@prisma/client';
 import type { UserRole } from '../../common/types/privacy.js';
 
 export interface UserRecord {
@@ -110,6 +111,138 @@ function createPublicAccessUser(): UserRecord {
     passwordHash: PUBLIC_ACCESS_PASSWORD_HASH,
     role: 'operator',
     updatedAt: now,
+  };
+}
+
+export class PrismaUserRepository implements UserRepository {
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly options: {
+      lockAfterAttempts?: number;
+      lockMinutes?: number;
+    } = {},
+  ) {}
+
+  async findByEmail(email: string): Promise<UserRecord | null> {
+    const user = await this.prisma.user.findUnique({
+      where: {
+        email: email.trim().toLowerCase(),
+      },
+    });
+
+    return user ? toUserRecord(user) : null;
+  }
+
+  async findById(id: string): Promise<UserRecord | null> {
+    const user = await this.prisma.user.findUnique({
+      where: {
+        id,
+      },
+    });
+
+    return user ? toUserRecord(user) : null;
+  }
+
+  async recordFailedLogin(id: string): Promise<void> {
+    const lockAfterAttempts = this.options.lockAfterAttempts ?? 5;
+    const lockMinutes = this.options.lockMinutes ?? 15;
+    const user = await this.prisma.user.update({
+      data: {
+        failedLoginAttempts: {
+          increment: 1,
+        },
+      },
+      where: {
+        id,
+      },
+    });
+
+    if (user.failedLoginAttempts >= lockAfterAttempts) {
+      await this.prisma.user.update({
+        data: {
+          lockedUntil: new Date(Date.now() + lockMinutes * 60 * 1000),
+        },
+        where: {
+          id,
+        },
+      });
+    }
+  }
+
+  async recordSuccessfulLogin(id: string): Promise<void> {
+    await this.prisma.user.update({
+      data: {
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+      },
+      where: {
+        id,
+      },
+    });
+  }
+}
+
+export async function seedBootstrapUsers(prisma: PrismaClient): Promise<void> {
+  await upsertUser(prisma, createPublicAccessUser());
+
+  const adminEmail = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
+  const adminPasswordHash = process.env.BOOTSTRAP_ADMIN_PASSWORD_HASH;
+
+  if (!adminEmail || !adminPasswordHash || adminPasswordHash.startsWith('replace-with-')) {
+    return;
+  }
+
+  const now = new Date();
+
+  await upsertUser(prisma, {
+    createdAt: now,
+    email: adminEmail,
+    failedLoginAttempts: 0,
+    id: 'bootstrap-admin',
+    isActive: true,
+    lockedUntil: null,
+    passwordHash: adminPasswordHash,
+    role: 'admin',
+    updatedAt: now,
+  });
+}
+
+async function upsertUser(prisma: PrismaClient, user: UserRecord): Promise<void> {
+  await prisma.user.upsert({
+    create: {
+      createdAt: user.createdAt,
+      email: user.email.trim().toLowerCase(),
+      failedLoginAttempts: user.failedLoginAttempts,
+      id: user.id,
+      isActive: user.isActive,
+      lockedUntil: user.lockedUntil,
+      passwordHash: user.passwordHash,
+      role: user.role,
+      updatedAt: user.updatedAt,
+    },
+    update: {
+      email: user.email.trim().toLowerCase(),
+      isActive: user.isActive,
+      passwordHash: user.passwordHash,
+      role: user.role,
+    },
+    where: {
+      id: user.id,
+    },
+  });
+}
+
+function toUserRecord(user: PrismaUser): UserRecord {
+  return {
+    createdAt: user.createdAt,
+    email: user.email,
+    failedLoginAttempts: user.failedLoginAttempts,
+    id: user.id,
+    isActive: user.isActive,
+    lockedUntil: user.lockedUntil,
+    passwordHash: user.passwordHash,
+    role: user.role,
+    updatedAt: user.updatedAt,
   };
 }
 

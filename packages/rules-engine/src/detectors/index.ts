@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import type {
   DetectionResult,
   EntityCategory,
@@ -27,6 +27,10 @@ export interface DetectionSummary {
 export interface DetectionEngineResult {
   detections: DetectionResult[];
   summary: DetectionSummary;
+}
+
+export interface DetectionEngineOptions {
+  hashSecret?: string;
 }
 
 export const RULES_ENGINE_VERSION = 'local-rules-v1';
@@ -215,10 +219,13 @@ const regexRules: DetectorRule[] = [
   },
 ];
 
-export function detectSensitiveEntities(text: string): DetectionEngineResult {
+export function detectSensitiveEntities(
+  text: string,
+  options: DetectionEngineOptions = {},
+): DetectionEngineResult {
   const detections = resolveOverlaps([
-    ...runRules(text, regexRules),
-    ...runRules(text, dictionaryRules),
+    ...runRules(text, regexRules, options),
+    ...runRules(text, dictionaryRules, options),
   ]);
 
   return {
@@ -241,7 +248,11 @@ export function summarizeDetections(detections: readonly DetectionResult[]): Det
   };
 }
 
-function runRules(text: string, rules: readonly DetectorRule[]): DetectionResult[] {
+function runRules(
+  text: string,
+  rules: readonly DetectorRule[],
+  options: DetectionEngineOptions,
+): DetectionResult[] {
   const detections: DetectionResult[] = [];
 
   for (const rule of rules) {
@@ -264,11 +275,11 @@ function runRules(text: string, rules: readonly DetectorRule[]): DetectionResult
       detections.push({
         category: rule.category,
         confidence: rule.confidence,
-        contextWindowHash: hashValue(contextWindow),
+        contextWindowHash: hashValue(contextWindow, options.hashSecret),
         endOffset: offsets.endOffset,
         entityType: rule.entityType,
         previewMasked: maskPreview(rawValue, rule.replacementType, rule.entityType),
-        rawValueHash: hashValue(rawValue),
+        rawValueHash: hashValue(rawValue, options.hashSecret),
         replacementType: rule.replacementType,
         ruleId: rule.ruleId,
         startOffset: offsets.startOffset,
@@ -388,7 +399,11 @@ function maskPreview(
   return `${'*'.repeat(Math.max(4, Math.min(8, value.length - visibleSuffix.length)))}${visibleSuffix}`;
 }
 
-function hashValue(value: string): string {
+function hashValue(value: string, secret: string | undefined): string {
+  if (secret) {
+    return `hmac-sha256:${createHmac('sha256', secret).update(value).digest('hex')}`;
+  }
+
   return `sha256:${createHash('sha256').update(value).digest('hex')}`;
 }
 

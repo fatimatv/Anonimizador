@@ -179,7 +179,6 @@ async function serializeUploadDocument(document: DocumentRecord, options: Upload
   const detections = await options.jobRepository.getDetectedEntitiesByDocumentId(document.id);
 
   return {
-    anonymizedText: await readAnonymizedText(document, options),
     detectionSummary: document.detectionSummary,
     detections: detections.map(serializeDetection),
     fileSizeBytes: document.fileSizeBytes,
@@ -202,23 +201,6 @@ function serializeDetection(detection: DetectedEntityRecord) {
     ruleId: detection.ruleId,
     startOffset: detection.startOffset,
   };
-}
-
-async function readAnonymizedText(
-  document: DocumentRecord,
-  options: UploadRoutesOptions,
-): Promise<string | null> {
-  if (!document.anonymizedStorageKey) {
-    return null;
-  }
-
-  try {
-    const anonymizedFile = await options.storageService.read(document.anonymizedStorageKey);
-
-    return anonymizedFile.toString('utf8');
-  } catch {
-    return null;
-  }
 }
 
 async function collectUploadFiles(

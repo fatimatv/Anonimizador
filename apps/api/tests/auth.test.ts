@@ -1,10 +1,20 @@
 import * as argon2 from 'argon2';
 import type { OutgoingHttpHeaders } from 'node:http';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/main.js';
 import { AuditService } from '../src/modules/audit/audit.service.js';
 import { InMemoryUserRepository, type UserRecord } from '../src/modules/users/user.repository.js';
 import { SessionService } from '../src/security/session.js';
+
+const originalPublicAccessEnabled = process.env.PUBLIC_ACCESS_ENABLED;
+
+afterEach(() => {
+  if (originalPublicAccessEnabled === undefined) {
+    delete process.env.PUBLIC_ACCESS_ENABLED;
+  } else {
+    process.env.PUBLIC_ACCESS_ENABLED = originalPublicAccessEnabled;
+  }
+});
 
 async function createAppWithUser(options: {
   email?: string;
@@ -161,6 +171,21 @@ describe('auth module', () => {
     ]);
   });
 
+  it('can disable temporary public access with an environment flag', async () => {
+    process.env.PUBLIC_ACCESS_ENABLED = 'false';
+    const { app } = await createAppWithUser({});
+
+    const publicResponse = await app.inject({
+      method: 'POST',
+      url: '/auth/public',
+    });
+
+    await app.close();
+
+    expect(publicResponse.statusCode).toBe(503);
+    expect(publicResponse.json()).toEqual({ error: 'public_access_unavailable' });
+  });
+
   it('rejects invalid credentials without auditing raw email or password', async () => {
     const { app, auditService } = await createAppWithUser({});
 
@@ -187,6 +212,27 @@ describe('auth module', () => {
         result: 'failure',
       }),
     );
+  });
+
+  it('blocks state-changing requests from an unexpected browser origin', async () => {
+    const { app, password } = await createAppWithUser({});
+
+    const response = await app.inject({
+      headers: {
+        origin: 'https://malicious.example',
+      },
+      method: 'POST',
+      payload: {
+        email: 'admin@example.local',
+        password,
+      },
+      url: '/auth/login',
+    });
+
+    await app.close();
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({ error: 'invalid_origin' });
   });
 
   it('temporarily blocks login after repeated failures', async () => {

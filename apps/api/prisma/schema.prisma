@@ -8,13 +8,15 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  passwordHash String
-  role         UserRole
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                  String    @id @default(uuid())
+  email               String    @unique
+  passwordHash        String
+  role                UserRole
+  isActive            Boolean   @default(true)
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   jobs        Job[]
   auditEvents AuditEvent[]
@@ -38,8 +40,12 @@ model Job {
   updatedAt       DateTime  @updatedAt
   expiresAt       DateTime?
 
-  createdBy User       @relation(fields: [createdByUserId], references: [id])
+  createdBy User       @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
   documents Document[]
+
+  @@index([createdByUserId])
+  @@index([expiresAt])
+  @@index([status])
 }
 
 enum JobStatus {
@@ -71,8 +77,12 @@ model Document {
   updatedAt             DateTime       @updatedAt
   expiresAt             DateTime?
 
-  job              Job              @relation(fields: [jobId], references: [id])
+  job              Job              @relation(fields: [jobId], references: [id], onDelete: Cascade)
   detectedEntities DetectedEntity[]
+
+  @@index([jobId])
+  @@index([expiresAt])
+  @@index([status])
 }
 
 enum DocumentStatus {
@@ -103,7 +113,9 @@ model DetectedEntity {
   contextWindowHash String?
   createdAt         DateTime        @default(now())
 
-  document Document @relation(fields: [documentId], references: [id])
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
 }
 
 enum EntityType {
@@ -176,7 +188,11 @@ model AuditEvent {
   userAgentHash String?
   createdAt     DateTime    @default(now())
 
-  actor User? @relation(fields: [actorUserId], references: [id])
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId])
+  @@index([createdAt])
+  @@index([resourceType, resourceId])
 }
 
 enum AuditAction {

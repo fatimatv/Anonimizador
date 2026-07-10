@@ -1,5 +1,6 @@
 import * as argon2 from 'argon2';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -33,11 +34,7 @@ async function createUploadTestApp(role: UserRecord['role'] = 'operator') {
   };
   const auditService = new AuditService('upload-test-audit-secret');
   const jobRepository = new InMemoryJobRepository();
-  const tempRoot = path.join(
-    'C:\\Users\\Fátima Toche\\Anonimizador',
-    'tmp-storage-tests',
-    randomUUID(),
-  );
+  const tempRoot = path.join(os.tmpdir(), 'anonimizador-upload-tests', randomUUID());
   const storageService = new StorageService(tempRoot, 'upload-test-storage-secret');
   const userRepository = new InMemoryUserRepository({ users: [user] });
   const sessionService = new SessionService({
@@ -159,7 +156,6 @@ describe('upload module', () => {
     expect(body).toMatchObject({
       documents: [
         {
-          anonymizedText: originalText,
           fileSizeBytes: expect.any(Number),
           mimeType: 'text/plain',
           status: 'needs_review',
@@ -367,6 +363,46 @@ describe('upload module', () => {
     expect(serializedAudit).not.toContain('12345678');
     expect(serializedAudit).not.toContain('persona@example.com');
     expect(serializedAudit).not.toContain('4111 1111 1111 1111');
+  });
+
+  it('allows only reviewers and admins to preview anonymized text before approval', async () => {
+    const { app, cookieHeader } = await createUploadTestApp('admin');
+    const multipart = multipartPayload([
+      {
+        content: 'DNI 12345678 para revisar.',
+        filename: 'revision.txt',
+        mimeType: 'text/plain',
+      },
+    ]);
+
+    const uploadResponse = await app.inject({
+      headers: {
+        'content-type': multipart.contentType,
+        cookie: cookieHeader,
+      },
+      method: 'POST',
+      payload: multipart.payload,
+      url: '/uploads/batch',
+    });
+    const documentId = uploadResponse.json().documents[0].id as string;
+    const previewResponse = await app.inject({
+      headers: { cookie: cookieHeader },
+      method: 'GET',
+      url: `/review/documents/${documentId}/anonymized-preview`,
+    });
+
+    await app.close();
+
+    expect(previewResponse.statusCode).toBe(200);
+    expect(previewResponse.json()).toMatchObject({
+      document: {
+        id: documentId,
+        status: 'needs_review',
+      },
+      text: expect.stringContaining('****5678'),
+    });
+    expect(previewResponse.body).not.toContain('12345678');
+    expect(JSON.stringify(uploadResponse.json())).not.toContain('DNI 12345678');
   });
 
   it('deletes job files and marks documents as deleted without exposing original names', async () => {

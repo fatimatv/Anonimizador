@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { canAccessRole, type AuthenticatedUser } from '../../common/guards/roles.js';
 import { firstHeaderValue } from '../../common/utils/headers.js';
-import type { AuditService } from './audit.service.js';
+import type { AuditEventRecord, AuditService } from './audit.service.js';
 
 interface AuditRoutesOptions {
   auditService: AuditService;
@@ -40,7 +40,19 @@ export async function registerAuditRoutes(
     }
 
     return {
-      events: options.auditService.list(),
+      events: await listAuditEvents(options.auditService),
     };
   });
+}
+
+async function listAuditEvents(auditService: AuditService): Promise<AuditEventRecord[]> {
+  if ('listPersisted' in auditService) {
+    return await (
+      auditService as AuditService & {
+        listPersisted(limit?: number): Promise<AuditEventRecord[]>;
+      }
+    ).listPersisted();
+  }
+
+  return auditService.list();
 }

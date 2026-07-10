@@ -10,6 +10,7 @@ export {
   detectSensitiveEntities,
   summarizeDetections,
   type DetectionEngineResult,
+  type DetectionEngineOptions,
   type DetectionSummary,
 } from './detectors/index.js';
 export type {

@@ -59,8 +59,18 @@ PostgreSQL + Redis + almacenamiento temporal local
 - Si la extraccion falla, el documento queda en `failed` y la auditoria registra un motivo tecnico generico.
 - Un documento extraido correctamente queda en `detecting_entities`, listo para Fase 4.
 
-## Limites de Fase 0
+## Decisiones de Fases 4 a 8
 
-- No hay deteccion ni anonimizacion.
-- No hay almacenamiento temporal activo.
+- `packages/rules-engine` implementa deteccion local por reglas para identificadores, datos sensibles por diccionario y patrones legales frecuentes.
+- La anonimizacion se aplica por offsets sobre el texto extraido y genera un archivo `.txt` temporal.
+- La API no devuelve el texto anonimizado en la respuesta de upload; el preview queda detras de rutas de revision para `admin` o `reviewer`.
+- La descarga queda bloqueada hasta aprobacion.
+- La eliminacion manual y limpieza por TTL usan las claves internas de storage.
+
+## Limites actuales
+
+- Los repositorios de usuarios, jobs, documentos y eventos de auditoria siguen en memoria por defecto.
+- Prisma modela y persiste usuarios, jobs, documentos, detecciones y auditoria cuando `DATABASE_URL` esta configurado.
+- Los repositorios en memoria quedan como fallback para tests y desarrollo sin base configurada.
+- BullMQ esta preparado como adaptador, pero el arranque por defecto usa cola en memoria.
 - No hay servicios externos de IA ni OCR.

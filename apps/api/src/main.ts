@@ -4,12 +4,19 @@ import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { pathToFileURL } from 'node:url';
+import { firstHeaderValue } from './common/utils/headers.js';
+import { disconnectPrismaClient, getPrismaClient } from './infrastructure/prisma.js';
 import { registerAuditRoutes } from './modules/audit/audit.routes.js';
-import { AuditService, resolveAuditHashSecret } from './modules/audit/audit.service.js';
+import {
+  AuditService,
+  PrismaAuditService,
+  resolveAuditHashSecret,
+} from './modules/audit/audit.service.js';
 import { AnonymizationService } from './modules/anonymization/anonymization.service.js';
 import { getCurrentUserFromRequest, registerAuthRoutes } from './modules/auth/auth.routes.js';
 import { DeletionService } from './modules/deletion/deletion.service.js';
 import { InMemoryJobRepository, type JobRepository } from './modules/documents/job.repository.js';
+import { PrismaJobRepository } from './modules/documents/prisma-job.repository.js';
 import { registerJobRoutes } from './modules/documents/job.routes.js';
 import { DetectionService } from './modules/detection/detection.service.js';
 import {
@@ -27,6 +34,8 @@ import { registerUploadRoutes } from './modules/upload/upload.routes.js';
 import { resolveUploadLimits } from './modules/upload/upload.config.js';
 import {
   createBootstrapUserRepository,
+  PrismaUserRepository,
+  seedBootstrapUsers,
   type UserRepository,
 } from './modules/users/user.repository.js';
 import { createSessionServiceFromEnv, type SessionService } from './security/session.js';
@@ -55,6 +64,30 @@ function parseAllowedOrigins(): string[] | false {
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
+}
+
+function isStateChangingMethod(method: string): boolean {
+  return ['DELETE', 'PATCH', 'POST', 'PUT'].includes(method.toUpperCase());
+}
+
+function isAllowedRequestOrigin(origin: string, hostHeader: string | undefined): boolean {
+  const allowedOrigins = parseAllowedOrigins();
+
+  if (allowedOrigins && allowedOrigins.includes(origin)) {
+    return true;
+  }
+
+  const host = firstHeaderValue(hostHeader);
+
+  if (!host) {
+    return false;
+  }
+
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
 }
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -92,6 +125,17 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     max: 100,
     timeWindow: '1 minute',
   });
+  app.addHook('preHandler', async (request, reply) => {
+    if (!isStateChangingMethod(request.method)) {
+      return;
+    }
+
+    const origin = firstHeaderValue(request.headers.origin);
+
+    if (origin && !isAllowedRequestOrigin(origin, request.headers.host)) {
+      return reply.code(403).send({ error: 'invalid_origin' });
+    }
+  });
 
   const uploadLimits = resolveUploadLimits();
 
@@ -107,11 +151,28 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     status: 'ok',
   }));
 
-  const auditService = options.auditService ?? new AuditService(resolveAuditHashSecret());
-  const jobRepository = options.jobRepository ?? new InMemoryJobRepository();
+  const prisma = shouldUsePrisma(options) ? getPrismaClient() : null;
+
+  if (prisma) {
+    await seedBootstrapUsers(prisma);
+    app.addHook('onClose', async () => {
+      await disconnectPrismaClient();
+    });
+  }
+
+  const auditService =
+    options.auditService ??
+    (prisma
+      ? new PrismaAuditService(resolveAuditHashSecret(), prisma)
+      : new AuditService(resolveAuditHashSecret()));
+  const jobRepository =
+    options.jobRepository ??
+    (prisma ? new PrismaJobRepository(prisma) : new InMemoryJobRepository());
   const sessionService = options.sessionService ?? createSessionServiceFromEnv();
   const storageService = options.storageService ?? createStorageServiceFromEnv();
-  const userRepository = options.userRepository ?? createBootstrapUserRepository();
+  const userRepository =
+    options.userRepository ??
+    (prisma ? new PrismaUserRepository(prisma) : createBootstrapUserRepository());
   const deletionService =
     options.deletionService ??
     new DeletionService({
@@ -164,6 +225,14 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   }
 
   return app;
+}
+
+function shouldUsePrisma(options: BuildAppOptions): boolean {
+  if (options.jobRepository || options.userRepository || options.auditService) {
+    return false;
+  }
+
+  return Boolean(process.env.DATABASE_URL) && process.env.NODE_ENV !== 'test';
 }
 
 function registerRetentionCleanup(app: FastifyInstance, deletionService: DeletionService): void {
