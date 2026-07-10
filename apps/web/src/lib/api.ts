@@ -36,6 +36,8 @@ export interface DetectionItem {
   startOffset: number;
 }
 
+export type AnonymizedOutputFormat = 'docx' | 'pdf' | 'txt';
+
 export interface DocumentItem {
   detectionSummary?: DetectionSummary | null;
   detections?: DetectionItem[];
@@ -167,6 +169,16 @@ export async function getAnonymizedPreview(documentId: string) {
   );
 }
 
+export async function updateAnonymizedPreview(input: { documentId: string; text: string }) {
+  return await apiJson<{ document: { id: string; jobId: string; status: string }; text: string }>(
+    `/review/documents/${input.documentId}/anonymized-preview`,
+    {
+      body: JSON.stringify({ text: input.text }),
+      method: 'PATCH',
+    },
+  );
+}
+
 export async function approveDocument(documentId: string) {
   return await apiJson<{ document: { id: string; status: string } }>(
     `/review/documents/${documentId}/approve`,
@@ -185,8 +197,11 @@ export async function rejectDocument(documentId: string) {
   );
 }
 
-export async function downloadAnonymized(documentId: string) {
-  return await apiDownload(`/documents/${documentId}/download-anonymized`);
+export async function downloadAnonymized(
+  documentId: string,
+  format: AnonymizedOutputFormat = 'txt',
+) {
+  return await apiDownload(`/documents/${documentId}/download-anonymized?format=${format}`);
 }
 
 export async function deleteJob(jobId: string) {

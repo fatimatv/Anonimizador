@@ -61,9 +61,13 @@ PostgreSQL + Redis + almacenamiento temporal local
 
 ## Decisiones de Fases 4 a 8
 
-- `packages/rules-engine` implementa deteccion local por reglas para identificadores, datos sensibles por diccionario y patrones legales frecuentes.
-- La anonimizacion se aplica por offsets sobre el texto extraido y genera un archivo `.txt` temporal.
+- `packages/rules-engine` implementa deteccion local por reglas, validadores peruanos, diccionarios controlados, patrones legales frecuentes y heuristicas locales de nombres/organizaciones.
+- La anonimizacion se aplica por offsets sobre el texto extraido y genera un texto anonimizado canonico en almacenamiento temporal.
+- La descarga puede renderizar ese texto aprobado como TXT, DOCX o PDF.
+- Para PDF original con texto embebido, la salida PDF se reconstruye como documento sanitizado del mismo tamano de pagina y usa coordenadas de texto para dibujar redacciones, sin copiar el contenido original oculto.
+- Para PDF escaneado con `OCR_ENABLED=true`, las paginas se rasterizan localmente, el OCR local entrega palabras/coordenadas y la salida quema redacciones sobre imagen antes de crear un PDF nuevo.
 - La API no devuelve el texto anonimizado en la respuesta de upload; el preview queda detras de rutas de revision para `admin` o `reviewer`.
+- La revision permite guardar correcciones manuales del texto anonimizado antes de aprobar.
 - La descarga queda bloqueada hasta aprobacion.
 - La eliminacion manual y limpieza por TTL usan las claves internas de storage.
 
@@ -74,4 +78,4 @@ PostgreSQL + Redis + almacenamiento temporal local
 - Los repositorios en memoria quedan como fallback para tests y desarrollo sin base configurada.
 - En produccion, el worker BullMQ debe correr como proceso separado con `pnpm --filter @document-anonymizer/api worker`.
 - La limpieza TTL para entornos serverless debe correr como cron dedicado con `pnpm --filter @document-anonymizer/api cleanup:retention`.
-- No hay servicios externos de IA ni OCR.
+- No hay servicios externos de IA ni OCR cloud. Si OCR local no esta habilitado o falla, los PDF escaneados sin texto embebido fallan de forma segura.

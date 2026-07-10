@@ -9,6 +9,7 @@ export type AuditAction =
   | 'processing_started'
   | 'detection_completed'
   | 'anonymization_completed'
+  | 'review_edited'
   | 'review_approved'
   | 'review_rejected'
   | 'download_anonymized'

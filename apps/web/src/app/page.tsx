@@ -11,6 +11,7 @@ import {
   LockKeyhole,
   LogOut,
   RefreshCw,
+  Save,
   ShieldCheck,
   Trash2,
   UploadCloud,
@@ -31,7 +32,9 @@ import {
   logout,
   publicLogin,
   rejectDocument,
+  updateAnonymizedPreview,
   uploadBatch,
+  type AnonymizedOutputFormat,
   type CurrentUser,
   type DetectionItem,
   type DocumentItem,
@@ -66,6 +69,8 @@ export default function HomePage() {
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [detections, setDetections] = useState<DetectionItem[]>([]);
   const [anonymizedPreview, setAnonymizedPreview] = useState<string | null>(null);
+  const [editedPreview, setEditedPreview] = useState('');
+  const [downloadFormat, setDownloadFormat] = useState<AnonymizedOutputFormat>('txt');
   const [activeTab, setActiveTab] = useState<MainTab>('workspace');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -107,6 +112,7 @@ export default function HomePage() {
     if (!selectedDocumentId) {
       setDetections([]);
       setAnonymizedPreview(null);
+      setEditedPreview('');
       return;
     }
 
@@ -127,7 +133,10 @@ export default function HomePage() {
     }
 
     getAnonymizedPreview(selectedDocumentId)
-      .then((result) => setAnonymizedPreview(result.text))
+      .then((result) => {
+        setAnonymizedPreview(result.text);
+        setEditedPreview(result.text);
+      })
       .catch((error) => showError(error));
   }, [canReview, selectedDocument?.status, selectedDocumentId, showError]);
 
@@ -180,6 +189,7 @@ export default function HomePage() {
       setSelectedDocumentId(null);
       setDetections([]);
       setAnonymizedPreview(null);
+      setEditedPreview('');
       setActiveTab('workspace');
     } catch (error) {
       showError(error);
@@ -231,14 +241,39 @@ export default function HomePage() {
     }
   }
 
+  async function handleSavePreview() {
+    if (!selectedDocumentId) {
+      return;
+    }
+
+    setBusy(true);
+    setNotice(null);
+
+    try {
+      const result = await updateAnonymizedPreview({
+        documentId: selectedDocumentId,
+        text: editedPreview,
+      });
+
+      setAnonymizedPreview(result.text);
+      setEditedPreview(result.text);
+      setNotice('Vista anonimizada actualizada');
+      await refreshJob();
+    } catch (error) {
+      showError(error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleDownload(documentId: string) {
     setBusy(true);
     setNotice(null);
 
     try {
-      const blob = await downloadAnonymized(documentId);
+      const blob = await downloadAnonymized(documentId, downloadFormat);
 
-      downloadBlob(blob, `anonimizado-${shortDocumentId(documentId)}.txt`);
+      downloadBlob(blob, `anonimizado-${shortDocumentId(documentId)}.${downloadFormat}`);
     } catch (error) {
       showError(error);
     } finally {
@@ -260,6 +295,7 @@ export default function HomePage() {
       setSelectedDocumentId(null);
       setDetections([]);
       setAnonymizedPreview(null);
+      setEditedPreview('');
       setNotice('Job eliminado');
     } catch (error) {
       showError(error);
@@ -540,7 +576,17 @@ export default function HomePage() {
                       />
                     ))}
                   </div>
-                  <ReviewPanel document={selectedDocument} anonymizedPreview={anonymizedPreview} />
+                  <ReviewPanel
+                    anonymizedPreview={anonymizedPreview}
+                    busy={busy}
+                    canReview={canReview}
+                    document={selectedDocument}
+                    downloadFormat={downloadFormat}
+                    editedPreview={editedPreview}
+                    onDownloadFormatChange={setDownloadFormat}
+                    onEditedPreviewChange={setEditedPreview}
+                    onSavePreview={handleSavePreview}
+                  />
                 </div>
                 <DetectionPanel document={selectedDocument} detections={detections} />
               </div>
@@ -649,7 +695,17 @@ function DocumentStat(props: { label: string; value: string }) {
   );
 }
 
-function ReviewPanel(props: { anonymizedPreview: string | null; document: DocumentItem | null }) {
+function ReviewPanel(props: {
+  anonymizedPreview: string | null;
+  busy: boolean;
+  canReview: boolean;
+  document: DocumentItem | null;
+  downloadFormat: AnonymizedOutputFormat;
+  editedPreview: string;
+  onDownloadFormatChange: (format: AnonymizedOutputFormat) => void;
+  onEditedPreviewChange: (text: string) => void;
+  onSavePreview: () => void;
+}) {
   const document = props.document;
   const totalEntities = document?.detectionSummary?.totalEntities ?? 0;
   const replacements = document?.validationSummary?.anonymization?.replacementsApplied ?? 0;
@@ -666,25 +722,55 @@ function ReviewPanel(props: { anonymizedPreview: string | null; document: Docume
           ) : null}
         </div>
         {document ? (
-          <div className="grid grid-cols-2 gap-2 text-sm">
+          <div className="grid gap-2 text-sm sm:grid-cols-[1fr_1fr_auto]">
             <Metric label="Detecciones" value={String(totalEntities)} />
             <Metric label="Reemplazos" value={String(replacements)} />
+            <label className="min-w-[120px] text-xs font-extrabold uppercase text-[#6F7072]">
+              Formato
+              <select
+                className="ialaw-input mt-1 h-9 py-1 text-sm normal-case"
+                value={props.downloadFormat}
+                onChange={(event) =>
+                  props.onDownloadFormatChange(event.target.value as AnonymizedOutputFormat)
+                }
+              >
+                <option value="txt">TXT</option>
+                <option value="docx">DOCX</option>
+                <option value="pdf">PDF</option>
+              </select>
+            </label>
           </div>
         ) : null}
       </div>
 
       <div className="mt-4 min-h-[360px] max-h-[560px] overflow-auto rounded-md border border-[#dfe3ef] bg-[#f8fafc]">
-        {document ? (
+        {document && props.canReview && document.status === 'needs_review' ? (
+          <textarea
+            className="min-h-[360px] w-full resize-y bg-transparent p-4 font-mono text-sm leading-6 text-[#111827] outline-none"
+            value={props.editedPreview}
+            onChange={(event) => props.onEditedPreviewChange(event.target.value)}
+            spellCheck={false}
+          />
+        ) : document ? (
           <pre className="whitespace-pre-wrap break-words p-4 font-mono text-sm leading-6 text-[#111827]">
-            {props.anonymizedPreview ||
-              (document.status === 'needs_review'
-                ? 'Vista disponible solo para administradores o revisores.'
-                : 'Documento sin texto anonimizado disponible.')}
+            {props.anonymizedPreview || 'Documento sin texto anonimizado disponible.'}
           </pre>
         ) : (
           <p className="p-4 text-sm text-[#6F7072]">Selecciona un documento.</p>
         )}
       </div>
+      {document && props.canReview && document.status === 'needs_review' ? (
+        <button
+          className="icon-button mt-3"
+          disabled={props.busy || props.editedPreview.trim().length === 0}
+          onClick={props.onSavePreview}
+          title="Guardar corrección"
+          type="button"
+        >
+          <Save size={17} aria-hidden="true" />
+          Guardar corrección
+        </button>
+      ) : null}
     </section>
   );
 }

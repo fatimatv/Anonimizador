@@ -73,6 +73,23 @@ describe('local anonymizer', () => {
 
     expect(result.anonymizedText).toBe('PERSON_NAME_001 firmo. PERSON_NAME_001 reviso.');
   });
+
+  it('can use a strict masking policy that fully redacts masked values', () => {
+    const text = 'DNI 12345678 y correo persona@example.com.';
+    const detectionResult = detectSensitiveEntities(text);
+    const result = anonymizeText({
+      detections: detectionResult.detections,
+      options: {
+        maskingPolicy: 'strict',
+      },
+      text,
+    });
+
+    expect(result.anonymizedText).toContain('[DNI REDACTADO]');
+    expect(result.anonymizedText).toContain('[EMAIL REDACTADO]');
+    expect(result.anonymizedText).not.toContain('5678');
+    expect(result.anonymizedText).not.toContain('.com');
+  });
 });
 
 describe('local detectors', () => {
@@ -101,12 +118,12 @@ describe('local detectors', () => {
   });
 
   it('detects RUC values', () => {
-    const result = detectSensitiveEntities('RUC 20123456789 activo.');
+    const result = detectSensitiveEntities('RUC 20100070970 activo.');
 
     expect(result.detections).toEqual([
       expect.objectContaining({
         entityType: 'ruc',
-        previewMasked: '*******6789',
+        previewMasked: '*******0970',
       }),
     ]);
   });
@@ -165,7 +182,7 @@ describe('local detectors', () => {
 
   it('detects bank accounts, license plates with vehicle context, and signatures', () => {
     const result = detectSensitiveEntities(
-      'Cuenta 12345678901234567890, placa ABC-123. Expediente 1234-2024. Firma: Maria Lopez',
+      'Cuenta 12345678901234567890, placa ABC-123. Firma: Maria Lopez',
     );
 
     expect(result.detections.map((detection) => detection.entityType)).toEqual([
@@ -183,6 +200,26 @@ describe('local detectors', () => {
       'license_plate',
     );
     expect(result.detections).toHaveLength(0);
+  });
+
+  it('detects legal case numbers when the code is extractable', () => {
+    const result = detectSensitiveEntities('Expediente: 1234-2024/CCO');
+
+    expect(result.detections).toEqual([
+      expect.objectContaining({
+        entityType: 'case_number',
+        replacementType: 'pseudonymize',
+      }),
+    ]);
+  });
+
+  it('detects organizations with legal context', () => {
+    const result = detectSensitiveEntities('Proveedor: Banco de Lima SAC con RUC 20100070970.');
+
+    expect(result.detections.map((detection) => detection.entityType)).toEqual([
+      'organization',
+      'ruc',
+    ]);
   });
 
   it('detects address, location, and person name context', () => {

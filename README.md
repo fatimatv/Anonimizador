@@ -2,7 +2,7 @@
 
 MVP en fases para una plataforma web de anonimizacion documental en lote, con procesamiento local, minimizacion de datos y auditoria sin contenido personal en claro.
 
-Estado actual: Fase 8 con hardening inicial. La base del monorepo ya incluye API Fastify, frontend operativo en Next.js, modelos y migracion Prisma, repositorios persistentes con PostgreSQL cuando `DATABASE_URL` esta configurado, autenticacion local inicial, roles, sesiones firmadas, auditoria tecnica no sensible, upload seguro en lote, almacenamiento temporal aislado, extraccion local de texto para TXT/PDF/DOCX, deteccion local basada en reglas, generacion local de archivo anonimizado en texto plano, preview de revision protegido, descarga protegida por aprobacion y eliminacion controlada. Los repositorios en memoria quedan como fallback para tests y desarrollo sin base configurada.
+Estado actual: Fase 9 con mejoras de precision y salida multi-formato. La base del monorepo ya incluye API Fastify, frontend operativo en Next.js, modelos y migraciones Prisma, repositorios persistentes con PostgreSQL cuando `DATABASE_URL` esta configurado, autenticacion local inicial, roles, sesiones firmadas, auditoria tecnica no sensible, upload seguro en lote, almacenamiento temporal aislado, extraccion local de texto para TXT/PDF/DOCX, deteccion local basada en reglas y validadores, generacion local de texto anonimizado, revision editable protegida, descarga aprobada en TXT/DOCX/PDF y eliminacion controlada. Los repositorios en memoria quedan como fallback para tests y desarrollo sin base configurada.
 
 ## Principios
 
@@ -78,6 +78,17 @@ Para evitar hashes reversibles de valores de baja entropia como DNI/RUC, configu
 
 - `DETECTION_HASH_SECRET`
 
+La politica de reemplazo puede conservar sufijos minimos para revision (`balanced`, por defecto) o redactar completamente valores enmascarables (`strict`):
+
+- `ANONYMIZATION_MASKING_POLICY=balanced`
+
+OCR local para PDFs escaneados es opcional y queda apagado por defecto. Para activarlo se requiere un binario local compatible con salida TSV, por ejemplo Tesseract:
+
+- `OCR_ENABLED=true`
+- `OCR_COMMAND=tesseract`
+- `OCR_LANGUAGES=spa+eng`
+- `OCR_MIN_CONFIDENCE=45`
+
 ## Despliegue frontend
 
 `vercel.json` deja preparado el despliegue del frontend desde `apps/web` cuando el repositorio se conecte en Vercel. La API, PostgreSQL y Redis siguen siendo servicios backend separados y no quedan desplegados en Vercel en esta fase.
@@ -115,7 +126,8 @@ pnpm --filter @document-anonymizer/api worker
 Controles actuales:
 
 - TXT se decodifica localmente como UTF-8.
-- PDF se procesa localmente con `pdf-parse`; no hay OCR.
+- PDF se procesa localmente con `pdfjs-dist` para extraer texto embebido y coordenadas.
+- Si `OCR_ENABLED=true`, PDFs sin texto embebido se rasterizan localmente y se procesan con OCR local configurable. No se llama a OCR cloud.
 - DOCX se procesa localmente con `mammoth`.
 - El texto extraido no se guarda ni se devuelve.
 - Solo se conserva hash y longitud del texto extraido.
@@ -128,7 +140,8 @@ Tras extraer texto, la API invoca el motor local de reglas en `packages/rules-en
 Detectores actuales:
 
 - DNI, RUC, carne de extranjeria, pasaporte, correos, telefonos, IP y URLs.
-- Direcciones, ubicaciones, nombres por contexto, cuentas bancarias, tarjetas con Luhn, placas, expedientes y firmas.
+- Direcciones, ubicaciones, nombres por contexto, organizaciones, cuentas bancarias, CCI, tarjetas con Luhn, placas, expedientes y firmas.
+- Validacion de checksum para RUC, filtros de falsos positivos para DNI, heuristicas locales para nombres legales en lineas de partes y pseudonimos para expedientes/organizaciones.
 - Diccionarios controlados para salud, biometria y datos de menores.
 
 Controles actuales:
@@ -141,17 +154,21 @@ Controles actuales:
 
 ## Anonimizacion local
 
-Despues de detectar entidades, la API aplica reemplazos locales por offsets y guarda un archivo `.txt` anonimizado en almacenamiento temporal aislado.
+Despues de detectar entidades, la API aplica reemplazos locales por offsets y guarda un texto anonimizado canonico en almacenamiento temporal aislado.
 
 Controles actuales:
 
 - No usa IA externa, OCR cloud ni APIs de terceros.
 - Los reemplazos se aplican con reglas locales: enmascarar, redactar, remover o pseudonimizar.
+- `ANONYMIZATION_MASKING_POLICY=strict` permite redaccion total de valores que normalmente se enmascararian.
 - Los pseudonimos son consistentes dentro del documento usando el hash del valor detectado.
 - El archivo anonimizado se guarda con clave interna en carpeta `anonymized`, sin nombre original.
-- La vista previa de revision queda limitada a `admin` o `reviewer`.
+- La vista previa de revision queda limitada a `admin` o `reviewer` y puede corregirse manualmente antes de aprobar.
 - La descarga queda bloqueada hasta que un `admin` o `reviewer` apruebe el documento.
-- `GET /documents/:documentId/download-anonymized` entrega solo el archivo aprobado.
+- `GET /documents/:documentId/download-anonymized?format=txt|docx|pdf` entrega solo el archivo aprobado en formato tecnico, sin usar el nombre original.
+- Para PDF con texto embebido, la salida PDF se reconstruye como documento sanitizado del mismo tamano de pagina y aplica cajas de redaccion segun coordenadas de deteccion. No copia el PDF original con texto oculto debajo.
+- Para PDF escaneado procesado con OCR local, la salida PDF rasteriza paginas y quema las cajas negras sobre la imagen antes de crear un PDF nuevo, evitando que se puedan retirar capas para recuperar pixeles sensibles.
+- Para TXT/DOCX y para PDFs sin coordenadas utilizables, la salida se renderiza desde el texto anonimizado aprobado.
 
 ## Eliminacion controlada
 

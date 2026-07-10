@@ -1,5 +1,6 @@
 export type EntityType =
   | 'person_name'
+  | 'organization'
   | 'dni'
   | 'passport'
   | 'foreigner_card'
