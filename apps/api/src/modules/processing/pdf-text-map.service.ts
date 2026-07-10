@@ -1,6 +1,8 @@
 import { createCanvas, Path2D as CanvasPath2D } from '@napi-rs/canvas';
 import type { OcrService } from './ocr.service.js';
 
+type PdfJsModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
+
 export interface PdfTextSpan {
   endOffset: number;
   height: number;
@@ -40,7 +42,7 @@ export async function extractPdfTextMap(input: {
   ocrService?: OcrService | null;
 }): Promise<PdfTextMap> {
   ensurePdfJsPolyfills();
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const pdfjs = await loadPdfJs();
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(input.buffer),
     disableFontFace: true,
@@ -198,7 +200,7 @@ export async function rasterizePdfPages(input: {
 }): Promise<PdfRasterPage[]> {
   ensurePdfJsPolyfills();
   const scale = input.scale ?? 2;
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const pdfjs = await loadPdfJs();
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(input.buffer),
     disableFontFace: true,
@@ -283,6 +285,12 @@ function ensurePdfJsPolyfills(): void {
   globalScope.DOMMatrix ??= MinimalDOMMatrix;
   globalScope.ImageData ??= MinimalImageData;
   globalScope.Path2D ??= CanvasPath2D ?? MinimalPath2D;
+}
+
+async function loadPdfJs(): Promise<PdfJsModule> {
+  await import('pdfjs-dist/legacy/build/pdf.worker.mjs');
+
+  return await import('pdfjs-dist/legacy/build/pdf.mjs');
 }
 
 class MinimalDOMMatrix {
