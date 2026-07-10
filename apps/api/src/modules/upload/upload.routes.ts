@@ -177,8 +177,14 @@ function serializeJob(job: JobRecord) {
 
 async function serializeUploadDocument(document: DocumentRecord, options: UploadRoutesOptions) {
   const detections = await options.jobRepository.getDetectedEntitiesByDocumentId(document.id);
+  const anonymizedPreview =
+    document.anonymizedStorageKey &&
+    (document.validationSummary.anonymization?.replacementsApplied ?? 0) > 0
+      ? (await options.storageService.read(document.anonymizedStorageKey)).toString('utf8')
+      : null;
 
   return {
+    anonymizedPreview,
     detectionSummary: document.detectionSummary,
     detections: detections.map(serializeDetection),
     fileSizeBytes: document.fileSizeBytes,

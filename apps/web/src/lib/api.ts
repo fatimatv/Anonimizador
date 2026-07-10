@@ -39,6 +39,7 @@ export interface DetectionItem {
 export type AnonymizedOutputFormat = 'docx' | 'pdf' | 'txt';
 
 export interface DocumentItem {
+  anonymizedPreview?: string | null;
   detectionSummary?: DetectionSummary | null;
   detections?: DetectionItem[];
   fileSizeBytes: number;
@@ -202,6 +203,26 @@ export async function downloadAnonymized(
   format: AnonymizedOutputFormat = 'txt',
 ) {
   return await apiDownload(`/documents/${documentId}/download-anonymized?format=${format}`);
+}
+
+export async function renderAnonymizedText(input: {
+  format: AnonymizedOutputFormat;
+  text: string;
+}) {
+  const response = await fetch(`${apiBase}/documents/render-anonymized`, {
+    body: JSON.stringify(input),
+    credentials: 'include',
+    headers: {
+      'content-type': 'application/json',
+    },
+    method: 'POST',
+  });
+
+  if (!response.ok) {
+    throw await apiErrorFrom(response);
+  }
+
+  return await response.blob();
 }
 
 export async function deleteJob(jobId: string) {

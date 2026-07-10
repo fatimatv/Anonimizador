@@ -32,6 +32,7 @@ import {
   logout,
   publicLogin,
   rejectDocument,
+  renderAnonymizedText,
   updateAnonymizedPreview,
   uploadBatch,
   type AnonymizedOutputFormat,
@@ -131,7 +132,19 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!selectedDocumentId || !canReview || selectedDocument?.status !== 'needs_review') {
+      if (selectedDocument?.anonymizedPreview) {
+        setAnonymizedPreview(selectedDocument.anonymizedPreview);
+        setEditedPreview(selectedDocument.anonymizedPreview);
+        return;
+      }
+
       setAnonymizedPreview(null);
+      return;
+    }
+
+    if (selectedDocument.anonymizedPreview) {
+      setAnonymizedPreview(selectedDocument.anonymizedPreview);
+      setEditedPreview(selectedDocument.anonymizedPreview);
       return;
     }
 
@@ -141,7 +154,13 @@ export default function HomePage() {
         setEditedPreview(result.text);
       })
       .catch((error) => showError(error));
-  }, [canReview, selectedDocument?.status, selectedDocumentId, showError]);
+  }, [
+    canReview,
+    selectedDocument?.anonymizedPreview,
+    selectedDocument?.status,
+    selectedDocumentId,
+    showError,
+  ]);
 
   useEffect(() => {
     if (uploadMode === 'single' && files.length > 1) {
@@ -230,6 +249,27 @@ export default function HomePage() {
     setNotice(null);
 
     try {
+      const document = jobDetail?.documents.find((candidate) => candidate.id === documentId);
+
+      if (document?.anonymizedPreview && user?.role === 'operator') {
+        const nextStatus = action === 'approve' ? 'approved' : 'rejected';
+
+        setJobDetail((current) =>
+          current
+            ? {
+                documents: current.documents.map((candidate) =>
+                  candidate.id === documentId ? { ...candidate, status: nextStatus } : candidate,
+                ),
+                job: {
+                  ...current.job,
+                  status: nextStatus,
+                },
+              }
+            : current,
+        );
+        return;
+      }
+
       if (action === 'approve') {
         await approveDocument(documentId);
       } else {
@@ -274,7 +314,13 @@ export default function HomePage() {
     setNotice(null);
 
     try {
-      const blob = await downloadAnonymized(documentId, downloadFormat);
+      const document = jobDetail?.documents.find((candidate) => candidate.id === documentId);
+      const blob = document?.anonymizedPreview
+        ? await renderAnonymizedText({
+            format: downloadFormat,
+            text: document.anonymizedPreview,
+          })
+        : await downloadAnonymized(documentId, downloadFormat);
 
       downloadBlob(blob, `anonimizado-${shortDocumentId(documentId)}.${downloadFormat}`);
     } catch (error) {

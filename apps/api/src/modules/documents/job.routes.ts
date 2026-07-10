@@ -177,6 +177,45 @@ export async function registerJobRoutes(
       .send(renderedOutput.buffer);
   });
 
+  app.post('/documents/render-anonymized', async (request, reply) => {
+    const currentUser = await options.getCurrentUser(request);
+
+    if (!currentUser) {
+      return reply.code(401).send({ error: 'authentication_required' });
+    }
+
+    const body = request.body as { format?: unknown; text?: unknown };
+    const text = typeof body.text === 'string' ? body.text.replace(/\r\n/gu, '\n').trim() : '';
+    const format = resolveBodyDownloadFormat(body.format);
+
+    if (text.length === 0 || text.length > 2_000_000) {
+      return reply.code(400).send({ error: 'invalid_payload' });
+    }
+
+    const renderer = options.outputRendererService ?? new OutputRendererService();
+    const renderedOutput = await renderer.render({
+      format,
+      text,
+    });
+
+    options.auditService.record({
+      actorUserId: currentUser.id,
+      action: 'download_anonymized',
+      resourceType: 'document',
+      result: 'success',
+      metadata: {
+        anonymizedHash: hashBuffer(Buffer.from(text, 'utf8')),
+        format,
+        mode: 'stateless',
+      },
+    });
+
+    return reply
+      .header('content-type', renderedOutput.mimeType)
+      .header('content-disposition', `attachment; filename="anonymized${renderedOutput.extension}"`)
+      .send(renderedOutput.buffer);
+  });
+
   app.get('/documents/:documentId/detections', async (request, reply) => {
     const currentUser = await options.getCurrentUser(request);
 
@@ -445,6 +484,10 @@ function resolveDownloadFormat(request: FastifyRequest): AnonymizedOutputFormat 
   }
 
   return 'txt';
+}
+
+function resolveBodyDownloadFormat(format: unknown): AnonymizedOutputFormat {
+  return format === 'docx' || format === 'pdf' || format === 'txt' ? format : 'txt';
 }
 
 function canReadJob(currentUser: AuthenticatedUser, job: JobRecord): boolean {

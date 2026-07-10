@@ -611,7 +611,9 @@ describe('upload module', () => {
       payload: multipart.payload,
       url: '/uploads/batch',
     });
-    const documentId = uploadResponse.json().documents[0].id as string;
+    const uploadBody = uploadResponse.json();
+    const documentId = uploadBody.documents[0].id as string;
+    const uploadPreview = uploadBody.documents[0].anonymizedPreview as string;
     const previewResponse = await app.inject({
       headers: { cookie: cookieHeader },
       method: 'GET',
@@ -627,9 +629,20 @@ describe('upload module', () => {
       method: 'GET',
       url: `/documents/${documentId}/download-anonymized`,
     });
+    const statelessDownloadResponse = await app.inject({
+      headers: { cookie: cookieHeader },
+      method: 'POST',
+      payload: {
+        format: 'txt',
+        text: uploadPreview,
+      },
+      url: '/documents/render-anonymized',
+    });
 
     await app.close();
 
+    expect(uploadPreview).toContain('****5678');
+    expect(uploadPreview).not.toContain('12345678');
     expect(previewResponse.statusCode).toBe(200);
     expect(previewResponse.json()).toMatchObject({
       document: {
@@ -648,6 +661,9 @@ describe('upload module', () => {
     expect(downloadResponse.statusCode).toBe(200);
     expect(downloadResponse.body).toContain('****5678');
     expect(downloadResponse.body).not.toContain('12345678');
+    expect(statelessDownloadResponse.statusCode).toBe(200);
+    expect(statelessDownloadResponse.body).toContain('****5678');
+    expect(statelessDownloadResponse.body).not.toContain('12345678');
   });
 
   it('allows reviewers and admins to preview anonymized text before approval', async () => {
