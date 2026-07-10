@@ -4,31 +4,25 @@ import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { pathToFileURL } from 'node:url';
+import { firstHeaderValue } from './common/utils/headers.js';
 import { registerAuditRoutes } from './modules/audit/audit.routes.js';
-import { AuditService, resolveAuditHashSecret } from './modules/audit/audit.service.js';
-import { AnonymizationService } from './modules/anonymization/anonymization.service.js';
+import type { AuditService } from './modules/audit/audit.service.js';
 import { getCurrentUserFromRequest, registerAuthRoutes } from './modules/auth/auth.routes.js';
 import { DeletionService } from './modules/deletion/deletion.service.js';
-import { InMemoryJobRepository, type JobRepository } from './modules/documents/job.repository.js';
+import type { JobRepository } from './modules/documents/job.repository.js';
 import { registerJobRoutes } from './modules/documents/job.routes.js';
-import { DetectionService } from './modules/detection/detection.service.js';
 import {
+  createBullMqProcessingQueueFromEnv,
   InMemoryProcessingQueue,
   type ProcessingQueue,
 } from './modules/processing/processing.queue.js';
-import { ProcessingService } from './modules/processing/processing.service.js';
-import { TextExtractionService } from './modules/processing/text-extraction.service.js';
-import {
-  createStorageServiceFromEnv,
-  type StorageService,
-} from './modules/storage/storage.service.js';
+import type { ProcessingService } from './modules/processing/processing.service.js';
+import type { StorageService } from './modules/storage/storage.service.js';
 import { FileValidationService } from './modules/upload/file-validation.service.js';
 import { registerUploadRoutes } from './modules/upload/upload.routes.js';
 import { resolveUploadLimits } from './modules/upload/upload.config.js';
-import {
-  createBootstrapUserRepository,
-  type UserRepository,
-} from './modules/users/user.repository.js';
+import type { UserRepository } from './modules/users/user.repository.js';
+import { closeRuntimeServices, createRuntimeServices } from './runtime/services.js';
 import { createSessionServiceFromEnv, type SessionService } from './security/session.js';
 
 const DEFAULT_PORT = 3001;
@@ -55,6 +49,30 @@ function parseAllowedOrigins(): string[] | false {
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
+}
+
+function isStateChangingMethod(method: string): boolean {
+  return ['DELETE', 'PATCH', 'POST', 'PUT'].includes(method.toUpperCase());
+}
+
+function isAllowedRequestOrigin(origin: string, hostHeader: string | undefined): boolean {
+  const allowedOrigins = parseAllowedOrigins();
+
+  if (allowedOrigins && allowedOrigins.includes(origin)) {
+    return true;
+  }
+
+  const host = firstHeaderValue(hostHeader);
+
+  if (!host) {
+    return false;
+  }
+
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
 }
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -92,6 +110,17 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     max: 100,
     timeWindow: '1 minute',
   });
+  app.addHook('preHandler', async (request, reply) => {
+    if (!isStateChangingMethod(request.method)) {
+      return;
+    }
+
+    const origin = firstHeaderValue(request.headers.origin);
+
+    if (origin && !isAllowedRequestOrigin(origin, request.headers.host)) {
+      return reply.code(403).send({ error: 'invalid_origin' });
+    }
+  });
 
   const uploadLimits = resolveUploadLimits();
 
@@ -107,30 +136,44 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     status: 'ok',
   }));
 
-  const auditService = options.auditService ?? new AuditService(resolveAuditHashSecret());
-  const jobRepository = options.jobRepository ?? new InMemoryJobRepository();
+  const runtimeServiceOptions: Parameters<typeof createRuntimeServices>[0] = {};
+
+  if (options.auditService) {
+    runtimeServiceOptions.auditService = options.auditService;
+  }
+
+  if (options.jobRepository) {
+    runtimeServiceOptions.jobRepository = options.jobRepository;
+  }
+
+  if (options.storageService) {
+    runtimeServiceOptions.storageService = options.storageService;
+  }
+
+  if (options.userRepository) {
+    runtimeServiceOptions.userRepository = options.userRepository;
+  }
+
+  const runtimeServices = await createRuntimeServices(runtimeServiceOptions);
+  app.addHook('onClose', async () => {
+    await closeRuntimeServices();
+  });
+
+  const {
+    auditService,
+    deletionService,
+    jobRepository,
+    processingService,
+    storageService,
+    userRepository,
+  } = runtimeServices;
   const sessionService = options.sessionService ?? createSessionServiceFromEnv();
-  const storageService = options.storageService ?? createStorageServiceFromEnv();
-  const userRepository = options.userRepository ?? createBootstrapUserRepository();
-  const deletionService =
-    options.deletionService ??
-    new DeletionService({
-      auditService,
-      jobRepository,
-      storageService,
-    });
+  const resolvedDeletionService = options.deletionService ?? deletionService;
   const processingQueue =
-    options.processingQueue ??
-    new InMemoryProcessingQueue(
-      new ProcessingService({
-        auditService,
-        anonymizationService: new AnonymizationService(),
-        detectionService: new DetectionService(),
-        jobRepository,
-        storageService,
-        textExtractionService: new TextExtractionService(),
-      }),
-    );
+    options.processingQueue ?? createProcessingQueueFromEnv(processingService);
+  app.addHook('onClose', async () => {
+    await processingQueue.close?.();
+  });
   const authOptions = {
     auditService,
     sessionService,
@@ -144,7 +187,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
   await registerJobRoutes(app, {
     auditService,
-    deletionService,
+    deletionService: resolvedDeletionService,
     getCurrentUser: (request) => getCurrentUserFromRequest(request, authOptions),
     jobRepository,
     storageService,
@@ -160,10 +203,18 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     uploadLimits,
   });
   if (options.enableRetentionCleanup ?? process.env.VERCEL !== '1') {
-    registerRetentionCleanup(app, deletionService);
+    registerRetentionCleanup(app, resolvedDeletionService);
   }
 
   return app;
+}
+
+function createProcessingQueueFromEnv(processingService: ProcessingService): ProcessingQueue {
+  if (process.env.PROCESSING_QUEUE_DRIVER === 'bullmq') {
+    return createBullMqProcessingQueueFromEnv();
+  }
+
+  return new InMemoryProcessingQueue(processingService);
 }
 
 function registerRetentionCleanup(app: FastifyInstance, deletionService: DeletionService): void {

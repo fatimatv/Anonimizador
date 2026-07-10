@@ -29,8 +29,9 @@ export async function registerAuthRoutes(
   options: AuthRoutesOptions,
 ): Promise<void> {
   const authService = new AuthService(options);
+  const loginRateLimit = resolveLoginRateLimit();
 
-  app.post('/auth/login', async (request, reply) => {
+  app.post('/auth/login', { config: { rateLimit: loginRateLimit } }, async (request, reply) => {
     const parsedBody = loginSchema.safeParse(request.body);
 
     if (!parsedBody.success) {
@@ -71,7 +72,11 @@ export async function registerAuthRoutes(
     };
   });
 
-  app.post('/auth/public', async (request, reply) => {
+  app.post('/auth/public', { config: { rateLimit: loginRateLimit } }, async (request, reply) => {
+    if (!isPublicAccessEnabled()) {
+      return reply.code(503).send({ error: 'public_access_unavailable' });
+    }
+
     const user = await options.userRepository.findById(PUBLIC_ACCESS_USER_ID);
 
     if (!user?.isActive) {
@@ -133,6 +138,26 @@ export async function registerAuthRoutes(
 
     return { user: currentUser };
   });
+}
+
+function isPublicAccessEnabled(): boolean {
+  const configuredValue = process.env.PUBLIC_ACCESS_ENABLED;
+
+  if (configuredValue !== undefined) {
+    return configuredValue === 'true';
+  }
+
+  return process.env.NODE_ENV !== 'production';
+}
+
+function resolveLoginRateLimit(): { max: number; timeWindow: string } {
+  const max = Number(process.env.LOGIN_RATE_LIMIT_MAX ?? 5);
+  const windowSeconds = Number(process.env.LOGIN_RATE_LIMIT_WINDOW_SECONDS ?? 300);
+
+  return {
+    max: Number.isFinite(max) && max > 0 ? max : 5,
+    timeWindow: `${Number.isFinite(windowSeconds) && windowSeconds > 0 ? windowSeconds : 300} seconds`,
+  };
 }
 
 export async function getCurrentUserFromRequest(

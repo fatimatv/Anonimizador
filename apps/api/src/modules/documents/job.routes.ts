@@ -177,6 +177,47 @@ export async function registerJobRoutes(
     };
   });
 
+  app.get('/review/documents/:documentId/anonymized-preview', async (request, reply) => {
+    const currentUser = await options.getCurrentUser(request);
+
+    if (!currentUser) {
+      return reply.code(401).send({ error: 'authentication_required' });
+    }
+
+    if (!canAccessRole(currentUser, ['admin', 'reviewer'])) {
+      recordReviewBlocked(currentUser, options);
+
+      return reply.code(403).send({ error: 'insufficient_role' });
+    }
+
+    const documentContext = await getDocumentContext(request, options);
+
+    if ('error' in documentContext) {
+      return reply.code(documentContext.statusCode ?? 404).send({ error: documentContext.error });
+    }
+
+    const { document, job } = documentContext;
+
+    if (!document.anonymizedStorageKey) {
+      return reply.code(409).send({ error: 'anonymized_file_not_ready' });
+    }
+
+    if (!['approved', 'completed', 'needs_review'].includes(document.status)) {
+      return reply.code(409).send({ error: 'document_not_ready_for_review' });
+    }
+
+    const anonymizedFile = await options.storageService.read(document.anonymizedStorageKey);
+
+    return {
+      document: {
+        id: document.id,
+        jobId: job.id,
+        status: document.status,
+      },
+      text: anonymizedFile.toString('utf8'),
+    };
+  });
+
   app.post('/review/documents/:documentId/approve', async (request, reply) => {
     const currentUser = await options.getCurrentUser(request);
 

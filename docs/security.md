@@ -7,10 +7,13 @@ La base de Fase 0 incorpora controles iniciales y define restricciones para las 
 - Helmet activo en API.
 - CORS configurable mediante `WEB_ORIGIN`.
 - Rate limiting tecnico base.
+- Rate limiting especifico para login y acceso publico mediante `LOGIN_RATE_LIMIT_MAX` y `LOGIN_RATE_LIMIT_WINDOW_SECONDS`.
+- Validacion de `Origin` en metodos con cambio de estado cuando el navegador envia ese header.
 - Logger de Fastify con redaccion de headers sensibles.
 - Sesiones firmadas con HMAC y expiracion corta.
 - Cookies `HttpOnly` y `SameSite=Strict`.
 - Bloqueo temporal por intentos fallidos.
+- Acceso publico temporal desactivable con `PUBLIC_ACCESS_ENABLED` y desactivado por defecto en produccion.
 - Guard de rol `admin` para auditoria.
 - Auditoria con metadatos validados y hashes HMAC para IP/user agent.
 - Upload multipart autenticado para `admin` y `operator`.
@@ -21,9 +24,11 @@ La base de Fase 0 incorpora controles iniciales y define restricciones para las 
 - Errores de extraccion sin fragmentos documentales.
 - Deteccion local por reglas sin IA externa.
 - Entidades detectadas guardadas sin valor crudo: solo hashes, offsets, tipo, categoria, confianza, regla y preview enmascarado.
+- Hashes de entidades detectadas con HMAC en API cuando se configura `DETECTION_HASH_SECRET` o `AUDIT_HASH_SECRET`.
 - Endpoint de detecciones limitado al propietario, `admin` o `reviewer`, sin hashes ni valores crudos en la respuesta publica.
 - Anonimizacion local por offsets sin servicios externos.
 - Archivo anonimizado guardado en carpeta separada `anonymized`, con clave interna y sin nombre original.
+- Preview de archivo anonimizado limitado a `admin` o `reviewer`.
 - Descarga de anonimizado bloqueada hasta aprobacion por `admin` o `reviewer`.
 - Eliminacion manual y limpieza por TTL de archivos temporales originales y anonimizados.
 - Auditoria de eliminacion sin contenido documental ni nombres originales.
@@ -32,11 +37,10 @@ La base de Fase 0 incorpora controles iniciales y define restricciones para las 
 
 ## Controles obligatorios para fases siguientes
 
-- Persistencia real de usuarios con Prisma y migraciones.
+- Operar `prisma migrate deploy` antes de iniciar ambientes con `DATABASE_URL`.
 - Cookies `Secure` obligatorias fuera de desarrollo.
-- CSRF si se usan cookies.
+- CSRF con token si se agregan formularios o integraciones cross-origin mas complejas.
 - Validacion estricta de payloads.
-- Persistencia real de Job/Document con Prisma.
 - Timeouts por archivo.
 - Errores sin contenido documental.
 - Auditoria no sensible.

@@ -4,11 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p ../../packages/rules-engine/tsconfig.build.json && tsc -p tsconfig.build.json",
+    "build": "prisma generate --schema prisma/schema.prisma && tsc -p ../../packages/rules-engine/tsconfig.build.json && tsc -p tsconfig.build.json",
+    "cleanup:retention": "tsx src/retention-cleanup.ts",
     "dev": "tsx watch src/main.ts",
     "lint": "eslint .",
-    "test": "tsc -p ../../packages/rules-engine/tsconfig.build.json && vitest run --passWithNoTests",
-    "typecheck": "tsc -p ../../packages/rules-engine/tsconfig.build.json && tsc -p tsconfig.json --noEmit"
+    "prisma:generate": "prisma generate --schema prisma/schema.prisma",
+    "prisma:migrate": "prisma migrate deploy --schema prisma/schema.prisma",
+    "test": "prisma generate --schema prisma/schema.prisma && tsc -p ../../packages/rules-engine/tsconfig.build.json && vitest run",
+    "test:integration": "prisma generate --schema prisma/schema.prisma && tsx tests/prisma.integration.ts",
+    "worker": "tsx src/worker.ts",
+    "typecheck": "prisma generate --schema prisma/schema.prisma && tsc -p ../../packages/rules-engine/tsconfig.build.json && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@document-anonymizer/rules-engine": "workspace:*",

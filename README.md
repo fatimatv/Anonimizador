@@ -2,7 +2,7 @@
 
 MVP en fases para una plataforma web de anonimizacion documental en lote, con procesamiento local, minimizacion de datos y auditoria sin contenido personal en claro.
 
-Estado actual: Fase 8 parcial. La base del monorepo ya incluye API Fastify, frontend operativo en Next.js, modelos Prisma, autenticacion local inicial, roles, sesiones firmadas, auditoria tecnica no sensible, upload seguro en lote, almacenamiento temporal aislado, extraccion local de texto para TXT/PDF/DOCX, deteccion local basada en reglas, generacion local de archivo anonimizado en texto plano, revision minima, descarga protegida por aprobacion y eliminacion controlada. Todavia falta persistencia real completa con Prisma/PostgreSQL para reemplazar repositorios en memoria.
+Estado actual: Fase 8 con hardening inicial. La base del monorepo ya incluye API Fastify, frontend operativo en Next.js, modelos y migracion Prisma, repositorios persistentes con PostgreSQL cuando `DATABASE_URL` esta configurado, autenticacion local inicial, roles, sesiones firmadas, auditoria tecnica no sensible, upload seguro en lote, almacenamiento temporal aislado, extraccion local de texto para TXT/PDF/DOCX, deteccion local basada en reglas, generacion local de archivo anonimizado en texto plano, preview de revision protegido, descarga protegida por aprobacion y eliminacion controlada. Los repositorios en memoria quedan como fallback para tests y desarrollo sin base configurada.
 
 ## Principios
 
@@ -38,7 +38,9 @@ docs/
 
 ```bash
 pnpm install
+pnpm --filter @document-anonymizer/api prisma:migrate
 pnpm dev
+pnpm --filter @document-anonymizer/api worker
 pnpm build
 pnpm typecheck
 pnpm lint
@@ -68,6 +70,14 @@ Para habilitar un usuario administrador inicial sin guardar una contrasena en cl
 
 El hash debe ser Argon2id. En produccion, `SESSION_SECRET` y `AUDIT_HASH_SECRET` son obligatorios.
 
+El acceso publico temporal queda desactivado por defecto en produccion. Para demos controladas se puede activar con:
+
+- `PUBLIC_ACCESS_ENABLED=true`
+
+Para evitar hashes reversibles de valores de baja entropia como DNI/RUC, configurar tambien:
+
+- `DETECTION_HASH_SECRET`
+
 ## Despliegue frontend
 
 `vercel.json` deja preparado el despliegue del frontend desde `apps/web` cuando el repositorio se conecte en Vercel. La API, PostgreSQL y Redis siguen siendo servicios backend separados y no quedan desplegados en Vercel en esta fase.
@@ -89,7 +99,18 @@ Controles actuales:
 
 ## Procesamiento local
 
-Tras un upload valido, la API encola cada documento para extraccion local de texto. En desarrollo y pruebas se usa una cola en memoria; tambien queda disponible un adaptador BullMQ para conectar Redis sin cambiar los servicios de procesamiento.
+Tras un upload valido, la API encola cada documento para extraccion local de texto. En desarrollo y pruebas se usa una cola en memoria. En produccion se puede activar BullMQ/Redis con:
+
+```env
+PROCESSING_QUEUE_DRIVER=bullmq
+REDIS_URL=redis://...
+```
+
+El worker separado se ejecuta con:
+
+```bash
+pnpm --filter @document-anonymizer/api worker
+```
 
 Controles actuales:
 
@@ -113,6 +134,7 @@ Detectores actuales:
 Controles actuales:
 
 - No se guarda ni devuelve el valor crudo detectado.
+- En API, los hashes de valores detectados usan HMAC cuando `DETECTION_HASH_SECRET` o `AUDIT_HASH_SECRET` esta configurado.
 - Se conserva hash del valor, hash de ventana de contexto, offsets, tipo, categoria, confianza, regla y preview enmascarado.
 - `GET /documents/:documentId/detections` devuelve solo la vista enmascarada para el propietario, `admin` o `reviewer`.
 - La auditoria de deteccion registra conteos y nivel de riesgo, sin contenido documental.
@@ -127,6 +149,7 @@ Controles actuales:
 - Los reemplazos se aplican con reglas locales: enmascarar, redactar, remover o pseudonimizar.
 - Los pseudonimos son consistentes dentro del documento usando el hash del valor detectado.
 - El archivo anonimizado se guarda con clave interna en carpeta `anonymized`, sin nombre original.
+- La vista previa de revision queda limitada a `admin` o `reviewer`.
 - La descarga queda bloqueada hasta que un `admin` o `reviewer` apruebe el documento.
 - `GET /documents/:documentId/download-anonymized` entrega solo el archivo aprobado.
 
@@ -141,6 +164,20 @@ Controles actuales:
 - Registra `deletion_requested` y `deletion_completed` sin nombres originales ni contenido.
 - `RETENTION_CLEANUP_INTERVAL_MS` permite ajustar la frecuencia de limpieza automatica.
 
-## Siguiente fase
+## Persistencia
 
-La siguiente fase debe reemplazar repositorios en memoria por persistencia real Prisma/PostgreSQL y preparar despliegue con API, base de datos y Redis separados.
+Cuando `DATABASE_URL` esta configurado y `NODE_ENV` no es `test`, la API usa Prisma/PostgreSQL para usuarios, jobs, documentos, detecciones y auditoria. Antes de desplegar o iniciar una base nueva, ejecutar:
+
+```bash
+pnpm --filter @document-anonymizer/api prisma:migrate
+```
+
+Si `DATABASE_URL` no existe, la API conserva repositorios en memoria para desarrollo temprano y pruebas.
+
+## Operacion productiva
+
+El despliegue productivo debe correr al menos tres procesos/entradas: API, worker BullMQ y limpieza TTL programada. La limpieza TTL de una sola corrida para cron/worker dedicado se ejecuta con:
+
+```bash
+pnpm --filter @document-anonymizer/api cleanup:retention
+```

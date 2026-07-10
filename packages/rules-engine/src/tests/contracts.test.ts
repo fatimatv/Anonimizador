@@ -87,6 +87,19 @@ describe('local detectors', () => {
     expect(JSON.stringify(dni)).not.toContain('12345678');
   });
 
+  it('can hash detected values with an HMAC secret', () => {
+    const result = detectSensitiveEntities('DNI 12345678 registrado.', {
+      hashSecret: 'test-detection-secret',
+    });
+    const dni = result.detections.find((detection) => detection.entityType === 'dni');
+
+    expect(dni).toMatchObject({
+      contextWindowHash: expect.stringMatching(/^hmac-sha256:/u),
+      rawValueHash: expect.stringMatching(/^hmac-sha256:/u),
+    });
+    expect(JSON.stringify(dni)).not.toContain('12345678');
+  });
+
   it('detects RUC values', () => {
     const result = detectSensitiveEntities('RUC 20123456789 activo.');
 

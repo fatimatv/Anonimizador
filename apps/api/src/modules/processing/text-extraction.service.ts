@@ -77,7 +77,7 @@ function ensurePdfJsPolyfills(): void {
 
 async function resolvePdfJsWorkerSrc(): Promise<string | undefined> {
   try {
-    // @ts-ignore pdfjs publishes this worker as a runtime ESM asset.
+    // @ts-expect-error pdfjs publishes this worker as a runtime ESM asset.
     await import('pdfjs-dist/legacy/build/pdf.worker.mjs');
 
     return import.meta.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs');

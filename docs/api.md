@@ -5,6 +5,7 @@ La Fase 1 expone endpoints tecnicos de salud, autenticacion local y auditoria pr
 ```txt
 GET /health
 POST /auth/login
+POST /auth/public
 POST /auth/logout
 GET /auth/me
 GET /uploads/limits
@@ -13,6 +14,7 @@ GET /jobs/:jobId
 DELETE /jobs/:jobId
 GET /documents/:documentId/detections
 GET /documents/:documentId/download-anonymized
+GET /review/documents/:documentId/anonymized-preview
 POST /review/documents/:documentId/approve
 POST /review/documents/:documentId/reject
 GET /audit-events
@@ -54,6 +56,8 @@ Si las credenciales son validas, responde usuario seguro y fija una cookie `Http
 
 `POST /auth/logout` limpia la cookie y registra auditoria no sensible.
 
+`POST /auth/public` crea una sesion temporal de operador solo si `PUBLIC_ACCESS_ENABLED=true` o si la aplicacion corre fuera de produccion. En produccion queda desactivado por defecto.
+
 ## Auditoria
 
 `GET /audit-events` requiere rol `admin`. Devuelve solo eventos tecnicos con metadatos validados; no incluye documento original, fragmentos, valores detectados, email de login en claro ni contrasenas.
@@ -64,7 +68,7 @@ Si las credenciales son validas, responde usuario seguro y fija una cookie `Http
 
 `POST /uploads/batch` requiere sesion valida y rol `admin` u `operator`. Recibe `multipart/form-data` con archivos en el campo `files`.
 
-Responde `201` con ids logicos de job/documentos y metadatos no sensibles. No devuelve nombres originales ni rutas internas.
+Responde `201` con ids logicos de job/documentos y metadatos no sensibles. No devuelve nombres originales, rutas internas, texto extraido ni texto anonimizado.
 
 Errores principales:
 
@@ -140,6 +144,8 @@ La respuesta devuelve solo resultados enmascarados:
 No devuelve `rawValue`, `rawValueHash`, `contextWindowHash`, texto original ni nombres originales de archivo.
 
 ## Revision
+
+`GET /review/documents/:documentId/anonymized-preview` requiere rol `admin` o `reviewer`. Devuelve el texto anonimizado solo cuando el documento esta listo para revision, sin exponer el original.
 
 `POST /review/documents/:documentId/approve` requiere rol `admin` o `reviewer`. Aprueba un documento que ya tenga archivo anonimizado generado.
 

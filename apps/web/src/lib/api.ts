@@ -37,7 +37,6 @@ export interface DetectionItem {
 }
 
 export interface DocumentItem {
-  anonymizedText?: string | null;
   detectionSummary?: DetectionSummary | null;
   detections?: DetectionItem[];
   fileSizeBytes: number;
@@ -160,6 +159,12 @@ export async function getJob(jobId: string) {
 
 export async function getDetections(documentId: string) {
   return await apiJson<DetectionsResponse>(`/documents/${documentId}/detections`);
+}
+
+export async function getAnonymizedPreview(documentId: string) {
+  return await apiJson<{ document: { id: string; jobId: string; status: string }; text: string }>(
+    `/review/documents/${documentId}/anonymized-preview`,
+  );
 }
 
 export async function approveDocument(documentId: string) {
