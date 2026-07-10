@@ -3,11 +3,15 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/main.js';
 import { AuditService } from '../src/modules/audit/audit.service.js';
 import { InMemoryJobRepository } from '../src/modules/documents/job.repository.js';
 import { StorageService } from '../src/modules/storage/storage.service.js';
+import { extractPdfTextMap } from '../src/modules/processing/pdf-text-map.service.js';
+import { TextExtractionService } from '../src/modules/processing/text-extraction.service.js';
+import { OutputRendererService } from '../src/modules/anonymization/output-renderer.service.js';
 import { InMemoryUserRepository, type UserRecord } from '../src/modules/users/user.repository.js';
 import { SessionService } from '../src/security/session.js';
 
@@ -103,6 +107,35 @@ function multipartPayload(files: MultipartFileInput[]) {
     contentType: `multipart/form-data; boundary=${boundary}`,
     payload: Buffer.concat(chunks),
   };
+}
+
+async function createTextPdf(text: string): Promise<Buffer> {
+  const document = await PDFDocument.create();
+  const page = document.addPage([595.28, 841.89]);
+  const font = await document.embedFont(StandardFonts.Helvetica);
+
+  page.drawText(text, {
+    font,
+    size: 12,
+    x: 72,
+    y: 760,
+  });
+
+  return Buffer.from(await document.save());
+}
+
+async function createImageOnlyPdf(): Promise<Buffer> {
+  const document = await PDFDocument.create();
+  const page = document.addPage([595.28, 841.89]);
+
+  page.drawRectangle({
+    height: 60,
+    width: 260,
+    x: 100,
+    y: 700,
+  });
+
+  return Buffer.from(await document.save());
 }
 
 describe('upload module', () => {
@@ -363,6 +396,200 @@ describe('upload module', () => {
     expect(serializedAudit).not.toContain('12345678');
     expect(serializedAudit).not.toContain('persona@example.com');
     expect(serializedAudit).not.toContain('4111 1111 1111 1111');
+  });
+
+  it('lets reviewers edit the anonymized text and download pdf or docx outputs', async () => {
+    const { app, auditService, cookieHeader, jobRepository } = await createUploadTestApp('admin');
+    const multipart = multipartPayload([
+      {
+        content: 'Nombre: Maria Lopez. DNI 12345678.',
+        filename: 'editable.txt',
+        mimeType: 'text/plain',
+      },
+    ]);
+
+    const uploadResponse = await app.inject({
+      headers: {
+        'content-type': multipart.contentType,
+        cookie: cookieHeader,
+      },
+      method: 'POST',
+      payload: multipart.payload,
+      url: '/uploads/batch',
+    });
+    const documentId = uploadResponse.json().documents[0].id as string;
+    const editResponse = await app.inject({
+      headers: { cookie: cookieHeader },
+      method: 'PATCH',
+      payload: {
+        text: 'Nombre: [PERSON_NAME REDACTADO]. DNI ****5678. Nota revisada.',
+      },
+      url: `/review/documents/${documentId}/anonymized-preview`,
+    });
+    const approvalResponse = await app.inject({
+      headers: { cookie: cookieHeader },
+      method: 'POST',
+      url: `/review/documents/${documentId}/approve`,
+    });
+    const pdfResponse = await app.inject({
+      headers: { cookie: cookieHeader },
+      method: 'GET',
+      url: `/documents/${documentId}/download-anonymized?format=pdf`,
+    });
+    const docxResponse = await app.inject({
+      headers: { cookie: cookieHeader },
+      method: 'GET',
+      url: `/documents/${documentId}/download-anonymized?format=docx`,
+    });
+    const document = await jobRepository.getDocumentById(documentId);
+
+    await app.close();
+
+    const serializedAudit = JSON.stringify(auditService.list());
+
+    expect(editResponse.statusCode).toBe(200);
+    expect(editResponse.json()).toMatchObject({
+      text: expect.stringContaining('Nota revisada'),
+    });
+    expect(approvalResponse.statusCode).toBe(200);
+    expect(pdfResponse.statusCode).toBe(200);
+    expect(pdfResponse.headers['content-type']).toContain('application/pdf');
+    expect(pdfResponse.rawPayload.subarray(0, 4).toString()).toBe('%PDF');
+    expect(docxResponse.statusCode).toBe(200);
+    expect(docxResponse.headers['content-type']).toContain(
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    );
+    expect(docxResponse.rawPayload.subarray(0, 2).toString()).toBe('PK');
+    expect(document?.validationSummary.anonymization).toMatchObject({
+      manualEditsApplied: true,
+    });
+    expect(serializedAudit).toContain('review_edited');
+    expect(serializedAudit).toContain('download_anonymized');
+    expect(serializedAudit).not.toContain('12345678');
+    expect(serializedAudit).not.toContain('Maria Lopez');
+  });
+
+  it('sanitizes text-based PDF downloads instead of overlaying hidden raw text', async () => {
+    const { app, cookieHeader } = await createUploadTestApp('admin');
+    const pdfBuffer = await createTextPdf(
+      'Documento con DNI 12345678 y correo persona@example.com',
+    );
+    const multipart = multipartPayload([
+      {
+        content: pdfBuffer,
+        filename: 'texto.pdf',
+        mimeType: 'application/pdf',
+      },
+    ]);
+
+    const uploadResponse = await app.inject({
+      headers: {
+        'content-type': multipart.contentType,
+        cookie: cookieHeader,
+      },
+      method: 'POST',
+      payload: multipart.payload,
+      url: '/uploads/batch',
+    });
+    const documentId = uploadResponse.json().documents[0].id as string;
+    const approvalResponse = await app.inject({
+      headers: { cookie: cookieHeader },
+      method: 'POST',
+      url: `/review/documents/${documentId}/approve`,
+    });
+    const downloadResponse = await app.inject({
+      headers: { cookie: cookieHeader },
+      method: 'GET',
+      url: `/documents/${documentId}/download-anonymized?format=pdf`,
+    });
+    const extractedOutput = await extractPdfTextMap({
+      buffer: downloadResponse.rawPayload,
+    });
+
+    await app.close();
+
+    expect(uploadResponse.statusCode).toBe(201);
+    expect(approvalResponse.statusCode).toBe(200);
+    expect(downloadResponse.statusCode).toBe(200);
+    expect(downloadResponse.headers['content-type']).toContain('application/pdf');
+    expect(extractedOutput.text).toContain('Documento');
+    expect(extractedOutput.text).not.toContain('12345678');
+    expect(extractedOutput.text).not.toContain('persona@example.com');
+  });
+
+  it('can extract scanned PDFs through an injected local OCR service', async () => {
+    const scannedPdf = await createImageOnlyPdf();
+    const extractionService = new TextExtractionService({
+      recognize: async () => [
+        {
+          confidence: 92,
+          height: 24,
+          left: 120,
+          text: 'DNI',
+          top: 120,
+          width: 42,
+        },
+        {
+          confidence: 94,
+          height: 24,
+          left: 172,
+          text: '12345678',
+          top: 120,
+          width: 112,
+        },
+      ],
+    });
+
+    const result = await extractionService.extract({
+      buffer: scannedPdf,
+      mimeType: 'application/pdf',
+    });
+
+    expect(result.text).toBe('DNI 12345678');
+    expect(result.extractedTextHash).toMatch(/^sha256:/u);
+  });
+
+  it('burns OCR redactions into rasterized scanned PDF output', async () => {
+    const scannedPdf = await createImageOnlyPdf();
+    let ocrCalls = 0;
+    const renderer = new OutputRendererService({
+      recognize: async () => {
+        ocrCalls += 1;
+
+        return [
+          {
+            confidence: 92,
+            height: 24,
+            left: 120,
+            text: 'DNI',
+            top: 120,
+            width: 42,
+          },
+          {
+            confidence: 94,
+            height: 24,
+            left: 172,
+            text: '12345678',
+            top: 120,
+            width: 112,
+          },
+        ];
+      },
+    });
+    const rendered = await renderer.render({
+      format: 'pdf',
+      originalPdfBuffer: scannedPdf,
+      redactions: [{ endOffset: 12, startOffset: 4 }],
+      text: 'DNI ****5678',
+    });
+    const extractedOutput = await extractPdfTextMap({
+      buffer: rendered.buffer,
+    });
+
+    expect(ocrCalls).toBeGreaterThan(0);
+    expect(rendered.mimeType).toBe('application/pdf');
+    expect(rendered.buffer.subarray(0, 4).toString()).toBe('%PDF');
+    expect(extractedOutput.text).not.toContain('12345678');
   });
 
   it('allows only reviewers and admins to preview anonymized text before approval', async () => {

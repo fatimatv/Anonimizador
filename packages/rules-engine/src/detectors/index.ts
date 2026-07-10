@@ -15,7 +15,7 @@ interface DetectorRule {
   replacementType: ReplacementType;
   ruleId: string;
   transformMatch?: (match: RegExpExecArray) => string;
-  validate?: (value: string) => boolean;
+  validate?: (value: string, match: RegExpExecArray, text: string) => boolean;
 }
 
 export interface DetectionSummary {
@@ -46,6 +46,11 @@ const dictionaryRules: DetectorRule[] = [
     'cáncer',
     'tratamiento medico',
     'tratamiento médico',
+    'enfermedad',
+    'discapacidad',
+    'salud mental',
+    'medicacion',
+    'medicación',
   ]),
   dictionaryRule('biometric_data', 'sensitive_data', 'redact', 'biometric-data-dictionary', [
     'huella dactilar',
@@ -59,6 +64,8 @@ const dictionaryRules: DetectorRule[] = [
     'niño',
     'niña',
     'adolescente',
+    'menor',
+    'infante',
   ]),
 ];
 
@@ -78,14 +85,27 @@ const regexRules: DetectorRule[] = [
     pattern: /\b(?:10|20)\d{9}\b/gu,
     replacementType: 'mask',
     ruleId: 'peru-ruc-regex-v1',
+    validate: isLikelyPeruRuc,
   },
   {
     category: 'identifier',
-    confidence: 0.9,
+    confidence: 0.94,
+    entityType: 'dni',
+    pattern:
+      /\b(?:dni|documento\s+nacional\s+de\s+identidad|doc\.?\s+identidad)[:.\s-]*(\d{8})\b/giu,
+    replacementType: 'mask',
+    ruleId: 'peru-dni-context-v2',
+    transformMatch: (match) => match[1] ?? match[0],
+    validate: isLikelyPeruDni,
+  },
+  {
+    category: 'identifier',
+    confidence: 0.68,
     entityType: 'dni',
     pattern: /\b\d{8}\b/gu,
     replacementType: 'mask',
-    ruleId: 'peru-dni-regex-v1',
+    ruleId: 'peru-dni-regex-v2',
+    validate: isLikelyPeruDni,
   },
   {
     category: 'identifier',
@@ -159,6 +179,17 @@ const regexRules: DetectorRule[] = [
     replacementType: 'mask',
     ruleId: 'bank-account-context-v1',
     transformMatch: (match) => match[1] ?? match[0],
+    validate: isLikelyBankAccount,
+  },
+  {
+    category: 'confidential_data',
+    confidence: 0.88,
+    entityType: 'bank_account',
+    pattern: /\b(?:cci|c[oó]digo\s+de\s+cuenta\s+interbancaria)[:\s-]*(\d{20})\b/giu,
+    replacementType: 'mask',
+    ruleId: 'peru-cci-context-v1',
+    transformMatch: (match) => match[1] ?? match[0],
+    validate: isLikelyBankAccount,
   },
   {
     category: 'personal_data',
@@ -196,11 +227,22 @@ const regexRules: DetectorRule[] = [
     ruleId: 'location-context-v1',
   },
   {
+    category: 'confidential_data',
+    confidence: 0.88,
+    entityType: 'case_number',
+    pattern:
+      /\b(?:expediente|exp\.?|caso|resoluci[oó]n|res\.?|procedimiento|tr[aá]mite|carta\s+n[°º.]?)[:\s]*(?:n[°º.]?\s*)?([A-Z0-9][A-Z0-9./-]{4,40})\b/giu,
+    replacementType: 'pseudonymize',
+    ruleId: 'legal-case-number-context-v1',
+    transformMatch: (match) => match[1] ?? match[0],
+    validate: isLikelyCaseNumber,
+  },
+  {
     category: 'personal_data',
     confidence: 0.82,
     entityType: 'person_name',
     pattern:
-      /\b(?:denunciante|denunciado|denunciada|demandante|demandado|demandada|solicitante|administrado|administrada|reclamante|consumidor|consumidora|titular|apoderado|apoderada|representante)[:\s.-]+([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'-]+(?:[ \t]+[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'-]+){1,5})\b/giu,
+      /\b(?:agraviado|agraviada|apoderado|apoderada|administrado|administrada|consumidor|consumidora|denunciante|denunciado|denunciada|demandante|demandado|demandada|imputado|imputada|investigado|investigada|quejoso|quejosa|reclamante|solicitante|titular|representante|testigo)[:\s.-]+([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'-]+(?:[ \t]+[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'-]+){1,5})\b/giu,
     replacementType: 'redact',
     ruleId: 'legal-person-name-context-v1',
     transformMatch: (match) => match[1] ?? match[0],
@@ -217,6 +259,17 @@ const regexRules: DetectorRule[] = [
     transformMatch: (match) => match[1] ?? match[0],
     validate: isLikelyPersonName,
   },
+  {
+    category: 'confidential_data',
+    confidence: 0.76,
+    entityType: 'organization',
+    pattern:
+      /\b(?:empresa|raz[oó]n\s+social|proveedor|entidad|empleador|contratista|instituci[oó]n|persona\s+jur[ií]dica)[:\s.-]+([A-ZÁÉÍÓÚÜÑ0-9][A-ZÁÉÍÓÚÜÑa-záéíóúüñ0-9&'.-]+(?:[ \t]+[A-ZÁÉÍÓÚÜÑ0-9][A-ZÁÉÍÓÚÜÑa-záéíóúüñ0-9&'.-]+){1,8}?)(?=\s+(?:con\s+)?ruc\b|[.;,\n]|$)/giu,
+    replacementType: 'pseudonymize',
+    ruleId: 'organization-context-v1',
+    transformMatch: (match) => match[1] ?? match[0],
+    validate: isLikelyOrganization,
+  },
 ];
 
 export function detectSensitiveEntities(
@@ -226,6 +279,7 @@ export function detectSensitiveEntities(
   const detections = resolveOverlaps([
     ...runRules(text, regexRules, options),
     ...runRules(text, dictionaryRules, options),
+    ...detectLegalNamedEntities(text, options),
   ]);
 
   return {
@@ -262,7 +316,7 @@ function runRules(
     while ((match = pattern.exec(text)) !== null) {
       const rawValue = rule.transformMatch?.(match) ?? match[0];
 
-      if (rawValue.length === 0 || rule.validate?.(rawValue) === false) {
+      if (rawValue.length === 0 || rule.validate?.(rawValue, match, text) === false) {
         continue;
       }
 
@@ -285,6 +339,42 @@ function runRules(
         startOffset: offsets.startOffset,
       });
     }
+  }
+
+  return detections;
+}
+
+function detectLegalNamedEntities(
+  text: string,
+  options: DetectionEngineOptions,
+): DetectionResult[] {
+  const detections: DetectionResult[] = [];
+  const partyLinePattern =
+    /^(?:\s*)(?:agraviado|agraviada|denunciante|denunciado|denunciada|demandante|demandado|demandada|imputado|imputada|quejoso|quejosa|representante|testigo)\s*[:.-]\s*([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ' -]{5,80})$/gimu;
+  let match: RegExpExecArray | null;
+
+  while ((match = partyLinePattern.exec(text)) !== null) {
+    const rawValue = titleCaseName((match[1] ?? '').trim());
+
+    if (!isLikelyPersonName(rawValue)) {
+      continue;
+    }
+
+    const offsets = resolveOffsets(match, match[1] ?? match[0]);
+    const contextWindow = text.slice(Math.max(0, offsets.startOffset - 24), offsets.endOffset + 24);
+
+    detections.push({
+      category: 'personal_data',
+      confidence: 0.86,
+      contextWindowHash: hashValue(contextWindow, options.hashSecret),
+      endOffset: offsets.endOffset,
+      entityType: 'person_name',
+      previewMasked: '[PERSON_NAME REDACTADO]',
+      rawValueHash: hashValue(rawValue, options.hashSecret),
+      replacementType: 'redact',
+      ruleId: 'legal-party-line-ner-v1',
+      startOffset: offsets.startOffset,
+    });
   }
 
   return detections;
@@ -440,6 +530,62 @@ function isLikelyPhoneNumber(value: string): boolean {
   return digits.length >= 6 && digits.length <= 11;
 }
 
+function isLikelyPeruDni(value: string, match?: RegExpExecArray, text?: string): boolean {
+  const digits = value.replace(/\D/gu, '');
+
+  if (!/^\d{8}$/u.test(digits) || /^(\d)\1{7}$/u.test(digits)) {
+    return false;
+  }
+
+  const numeric = Number(digits);
+
+  if (numeric < 1000000) {
+    return false;
+  }
+
+  if (match && text) {
+    const leftContext = text.slice(Math.max(0, match.index - 24), match.index).toLowerCase();
+
+    if (/\b(?:expediente|resoluci[oó]n|caso|ruc|cuenta|cci|partida)\b/u.test(leftContext)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function isLikelyPeruRuc(value: string): boolean {
+  const digits = value.replace(/\D/gu, '');
+
+  if (!/^(?:10|20)\d{9}$/u.test(digits) || /^(\d)\1{10}$/u.test(digits)) {
+    return false;
+  }
+
+  const factors = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+  const sum = factors.reduce((total, factor, index) => total + Number(digits[index]) * factor, 0);
+  const remainder = 11 - (sum % 11);
+  const checkDigit = remainder === 10 ? 0 : remainder === 11 ? 1 : remainder;
+
+  return checkDigit === Number(digits[10]);
+}
+
+function isLikelyBankAccount(value: string): boolean {
+  const digits = value.replace(/\D/gu, '');
+
+  return digits.length >= 10 && digits.length <= 20 && !/^(\d)\1+$/u.test(digits);
+}
+
+function isLikelyCaseNumber(value: string): boolean {
+  const normalized = value.trim();
+
+  return (
+    normalized.length >= 5 &&
+    /[0-9]/u.test(normalized) &&
+    /[-/.]/u.test(normalized) &&
+    !/^\d{8}$/u.test(normalized)
+  );
+}
+
 function isLikelyPersonName(value: string): boolean {
   if (/\d/u.test(value)) {
     return false;
@@ -487,6 +633,47 @@ function isLikelyPersonName(value: string): boolean {
     tokens.length <= 6 &&
     tokens.every((token) => token.length >= 2 || particles.has(token))
   );
+}
+
+function isLikelyOrganization(value: string): boolean {
+  const normalized = normalizeForRules(value);
+
+  if (
+    isLikelyPersonName(value) &&
+    !/\b(?:SAC|SA|SRL|EIRL|BANCO|ASOCIACION|EMPRESA)\b/u.test(normalized)
+  ) {
+    return false;
+  }
+
+  const organizationMarkers = [
+    'ASOCIACION',
+    'BANCO',
+    'CLINICA',
+    'COMISION',
+    'EIRL',
+    'EMPRESA',
+    'FINANCIERA',
+    'FUNDACION',
+    'INSTITUTO',
+    'MUNICIPALIDAD',
+    'S A',
+    'SA',
+    'SAC',
+    'S R L',
+    'SRL',
+    'UNIVERSIDAD',
+  ];
+
+  return (
+    normalized.split(/\s+/u).filter(Boolean).length >= 2 &&
+    organizationMarkers.some((marker) => normalized.includes(marker))
+  );
+}
+
+function titleCaseName(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/\b[\p{L}'-]+/gu, (token) => token.charAt(0).toUpperCase() + token.slice(1));
 }
 
 function normalizeForRules(value: string): string {

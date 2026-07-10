@@ -25,8 +25,13 @@ export interface AnonymizationResult {
   summary: AnonymizationSummary;
 }
 
+export interface AnonymizationOptions {
+  maskingPolicy?: 'balanced' | 'strict';
+}
+
 export function anonymizeText(input: {
   detections: readonly DetectionResult[];
+  options?: AnonymizationOptions;
   text: string;
 }): AnonymizationResult {
   const detections = resolveOverlaps(input.detections).filter((detection) =>
@@ -34,7 +39,7 @@ export function anonymizeText(input: {
   );
   const pseudonymState = new Map<string, string>();
   const replacements = detections.map((detection) => {
-    const replacement = replacementFor(detection, pseudonymState);
+    const replacement = replacementFor(detection, pseudonymState, input.options);
 
     return {
       detection,
@@ -76,9 +81,17 @@ function applyReplacements(
     }, text);
 }
 
-function replacementFor(detection: DetectionResult, pseudonymState: Map<string, string>): string {
+function replacementFor(
+  detection: DetectionResult,
+  pseudonymState: Map<string, string>,
+  options: AnonymizationOptions | undefined,
+): string {
   if (detection.replacementType === 'remove') {
     return '';
+  }
+
+  if (options?.maskingPolicy === 'strict' && detection.replacementType === 'mask') {
+    return `[${detection.entityType.toUpperCase()} REDACTADO]`;
   }
 
   if (detection.replacementType === 'pseudonymize') {

@@ -2,6 +2,7 @@ export {
   ANONYMIZATION_ENGINE_VERSION,
   anonymizeText,
   type AnonymizationReplacement,
+  type AnonymizationOptions,
   type AnonymizationResult,
   type AnonymizationSummary,
 } from './anonymizers/index.js';

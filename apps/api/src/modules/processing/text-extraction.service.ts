@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import mammoth from 'mammoth';
+import { extractPdfTextMap } from './pdf-text-map.service.js';
+import { createOcrServiceFromEnv, type OcrService } from './ocr.service.js';
 
 export interface ExtractedTextSummary {
   extractedTextHash: string;
@@ -11,6 +13,8 @@ export interface ExtractedTextResult extends ExtractedTextSummary {
 }
 
 export class TextExtractionService {
+  constructor(private readonly ocrService: OcrService | null = createOcrServiceFromEnv()) {}
+
   async extract(input: { buffer: Buffer; mimeType: string }): Promise<ExtractedTextResult> {
     const text = await this.extractRawText(input);
     const normalizedText = text.replace(/\r\n/g, '\n').trim();
@@ -32,23 +36,12 @@ export class TextExtractionService {
     }
 
     if (input.mimeType === 'application/pdf') {
-      ensurePdfJsPolyfills();
-      const { PDFParse } = await import('pdf-parse');
-      const workerSrc = await resolvePdfJsWorkerSrc();
-
-      if (workerSrc) {
-        PDFParse.setWorker(workerSrc);
-      }
-
-      const parser = new PDFParse({ data: input.buffer });
-
-      try {
-        const result = await parser.getText();
-
-        return result.text;
-      } finally {
-        await parser.destroy();
-      }
+      return (
+        await extractPdfTextMap({
+          buffer: input.buffer,
+          ocrService: this.ocrService,
+        })
+      ).text;
     }
 
     if (
@@ -65,91 +58,4 @@ export class TextExtractionService {
 
 function hashText(text: string): string {
   return `sha256:${createHash('sha256').update(text).digest('hex')}`;
-}
-
-function ensurePdfJsPolyfills(): void {
-  const globalScope = globalThis as Record<string, unknown>;
-
-  globalScope.DOMMatrix ??= MinimalDOMMatrix;
-  globalScope.ImageData ??= MinimalImageData;
-  globalScope.Path2D ??= MinimalPath2D;
-}
-
-async function resolvePdfJsWorkerSrc(): Promise<string | undefined> {
-  try {
-    // @ts-expect-error pdfjs publishes this worker as a runtime ESM asset.
-    await import('pdfjs-dist/legacy/build/pdf.worker.mjs');
-
-    return import.meta.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs');
-  } catch {
-    return undefined;
-  }
-}
-
-class MinimalDOMMatrix {
-  a = 1;
-
-  b = 0;
-
-  c = 0;
-
-  d = 1;
-
-  e = 0;
-
-  f = 0;
-
-  constructor(init?: readonly number[] | string) {
-    if (Array.isArray(init)) {
-      [this.a, this.b, this.c, this.d, this.e, this.f] = [
-        Number(init[0] ?? 1),
-        Number(init[1] ?? 0),
-        Number(init[2] ?? 0),
-        Number(init[3] ?? 1),
-        Number(init[4] ?? 0),
-        Number(init[5] ?? 0),
-      ];
-    }
-  }
-
-  invertSelf(): this {
-    return this;
-  }
-
-  multiplySelf(): this {
-    return this;
-  }
-
-  preMultiplySelf(): this {
-    return this;
-  }
-
-  scale(): this {
-    return this;
-  }
-
-  translate(): this {
-    return this;
-  }
-}
-
-class MinimalImageData {
-  readonly data: Uint8ClampedArray;
-
-  constructor(
-    dataOrWidth: Uint8ClampedArray | number,
-    readonly width: number,
-    readonly height = 0,
-  ) {
-    this.data =
-      typeof dataOrWidth === 'number'
-        ? new Uint8ClampedArray(dataOrWidth * width * 4)
-        : dataOrWidth;
-  }
-}
-
-class MinimalPath2D {
-  constructor(_path?: string | MinimalPath2D) {}
-
-  addPath(): void {}
 }

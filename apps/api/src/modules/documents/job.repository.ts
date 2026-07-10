@@ -66,6 +66,7 @@ export interface DocumentRecord {
   validationSummary: {
     anonymization?: AnonymizationSummary & {
       anonymizedContentHash: string;
+      manualEditsApplied?: boolean;
       outputExtension: string;
       outputMimeType: string;
     };
@@ -146,6 +147,7 @@ export interface JobRepository {
       anonymizedStorageKey: string;
       anonymizationSummary: AnonymizationSummary & {
         anonymizedContentHash: string;
+        manualEditsApplied?: boolean;
         outputExtension: string;
         outputMimeType: string;
       };
@@ -357,6 +359,7 @@ export class InMemoryJobRepository implements JobRepository {
       anonymizedStorageKey: string;
       anonymizationSummary: AnonymizationSummary & {
         anonymizedContentHash: string;
+        manualEditsApplied?: boolean;
         outputExtension: string;
         outputMimeType: string;
       };

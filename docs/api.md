@@ -15,6 +15,7 @@ DELETE /jobs/:jobId
 GET /documents/:documentId/detections
 GET /documents/:documentId/download-anonymized
 GET /review/documents/:documentId/anonymized-preview
+PATCH /review/documents/:documentId/anonymized-preview
 POST /review/documents/:documentId/approve
 POST /review/documents/:documentId/reject
 GET /audit-events
@@ -147,6 +148,16 @@ No devuelve `rawValue`, `rawValueHash`, `contextWindowHash`, texto original ni n
 
 `GET /review/documents/:documentId/anonymized-preview` requiere rol `admin` o `reviewer`. Devuelve el texto anonimizado solo cuando el documento esta listo para revision, sin exponer el original.
 
+`PATCH /review/documents/:documentId/anonymized-preview` requiere rol `admin` o `reviewer`. Recibe una version corregida del texto anonimizado:
+
+```json
+{
+  "text": "Texto anonimizado revisado"
+}
+```
+
+La API guarda esa version como nuevo artefacto anonimizado, recalcula hash y registra `review_edited` sin guardar comentarios libres ni texto original.
+
 `POST /review/documents/:documentId/approve` requiere rol `admin` o `reviewer`. Aprueba un documento que ya tenga archivo anonimizado generado.
 
 `POST /review/documents/:documentId/reject` requiere rol `admin` o `reviewer`. Marca el documento como rechazado y el job como `rejected`.
@@ -157,6 +168,8 @@ Ambos endpoints registran auditoria no sensible y no aceptan comentarios libres 
 
 `GET /documents/:documentId/download-anonymized` requiere sesion valida. Puede descargarlo el creador del job, `admin` o `reviewer`, pero solo si el documento esta `approved` o `completed`.
 
+Acepta `?format=txt`, `?format=docx` o `?format=pdf`. Si no se envia formato, usa `txt`.
+
 Antes de la aprobacion responde:
 
 ```json
@@ -165,7 +178,7 @@ Antes de la aprobacion responde:
 }
 ```
 
-La descarga usa un nombre tecnico `anonymized-{documentId}.txt`, no el nombre original del archivo.
+La descarga usa un nombre tecnico `anonymized-{documentId}.{format}`, no el nombre original del archivo. Para `txt` y `docx`, la salida se renderiza desde el texto anonimizado aprobado. Para `pdf`, si el original era PDF con texto embebido, la API genera un PDF sanitizado con paginas del mismo tamano y redacciones visuales por coordenadas; no superpone cajas sobre el PDF original, para evitar dejar texto oculto extraible. Si el original era PDF escaneado y `OCR_ENABLED=true`, la API rasteriza paginas y quema redacciones sobre la imagen antes de crear un PDF nuevo. Si no hay coordenadas utilizables, la API usa un PDF generado desde el texto anonimizado aprobado.
 
 ## Eliminacion
 
