@@ -308,6 +308,53 @@ describe('local detectors', () => {
     expect(anonymized.anonymizedText).not.toContain('Rita Carrillo');
   });
 
+  it('redacts standalone person names without a role label', () => {
+    const text = 'El documento menciona a Rita Carrillo y Carlos Perez como participantes.';
+    const detectionResult = detectSensitiveEntities(text);
+    const anonymized = anonymizeText({
+      detections: detectionResult.detections,
+      text,
+    });
+
+    expect(detectionResult.detections).toEqual([
+      expect.objectContaining({
+        entityType: 'person_name',
+        ruleId: 'standalone-person-name-v1',
+      }),
+      expect.objectContaining({
+        entityType: 'person_name',
+        ruleId: 'standalone-person-name-v1',
+      }),
+    ]);
+    expect(anonymized.anonymizedText).not.toContain('Rita Carrillo');
+    expect(anonymized.anonymizedText).not.toContain('Carlos Perez');
+  });
+
+  it('redacts less common person names when they appear on their own line', () => {
+    const text = 'Participantes\n\nXimena Quispe\n\nTema tratado.';
+    const detectionResult = detectSensitiveEntities(text);
+    const anonymized = anonymizeText({
+      detections: detectionResult.detections,
+      text,
+    });
+
+    expect(detectionResult.detections).toEqual([
+      expect.objectContaining({
+        entityType: 'person_name',
+        ruleId: 'standalone-person-name-v1',
+      }),
+    ]);
+    expect(anonymized.anonymizedText).not.toContain('Ximena Quispe');
+  });
+
+  it('does not treat institutional phrases as standalone person names', () => {
+    const result = detectSensitiveEntities(
+      'Facultad de Educacion Continua. Banco de Lima S.A.C. Expediente: 1234-2024/CCO.',
+    );
+
+    expect(result.detections).toHaveLength(0);
+  });
+
   it('detects controlled dictionaries for sensitive data', () => {
     const result = detectSensitiveEntities(
       'Historia clinica con diagnostico de cancer y huella dactilar de menor de edad.',

@@ -269,6 +269,7 @@ export function detectSensitiveEntities(
     ...runRules(text, regexRules, options),
     ...runRules(text, dictionaryRules, options),
     ...detectLegalNamedEntities(text, options),
+    ...detectStandalonePersonNames(text, options),
   ]);
 
   return {
@@ -416,6 +417,45 @@ function detectLegalNamedEntities(
       rawValueHash: hashValue(rawValue, options.hashSecret),
       replacementType: 'redact',
       ruleId: 'attribution-title-name-v1',
+      startOffset: offsets.startOffset,
+    });
+  }
+
+  return detections;
+}
+
+function detectStandalonePersonNames(
+  text: string,
+  options: DetectionEngineOptions,
+): DetectionResult[] {
+  const detections: DetectionResult[] = [];
+  const standaloneNamePattern =
+    /\b([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'-]+(?:[ \t]+(?:da|de|del|di|dos|la|las|los|van|von)?[ \t]*[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'-]+){1,5})\b/gu;
+  let match: RegExpExecArray | null;
+
+  while ((match = standaloneNamePattern.exec(text)) !== null) {
+    const rawValue = (match[1] ?? '').replace(/\s+/gu, ' ').trim();
+    const offsets = resolveOffsets(match, match[1] ?? match[0]);
+
+    if (
+      !isLikelyPersonName(rawValue) ||
+      (!hasPersonNameSignal(rawValue) && !isOwnLine(text, offsets.startOffset, offsets.endOffset))
+    ) {
+      continue;
+    }
+
+    const contextWindow = text.slice(Math.max(0, offsets.startOffset - 24), offsets.endOffset + 24);
+
+    detections.push({
+      category: 'personal_data',
+      confidence: 0.72,
+      contextWindowHash: hashValue(contextWindow, options.hashSecret),
+      endOffset: offsets.endOffset,
+      entityType: 'person_name',
+      previewMasked: '[PERSON_NAME REDACTADO]',
+      rawValueHash: hashValue(rawValue, options.hashSecret),
+      replacementType: 'redact',
+      ruleId: 'standalone-person-name-v1',
       startOffset: offsets.startOffset,
     });
   }
@@ -624,6 +664,27 @@ function isLikelyPersonName(value: string): boolean {
   }
 
   const normalized = normalizeForRules(value);
+  const disallowedNameTokens = [
+    'AREA',
+    'ATENCION',
+    'BASE',
+    'CATEGORIAS',
+    'CITA',
+    'COMUNICACION',
+    'CONTINUA',
+    'DOCUMENTO',
+    'EDUCACION',
+    'EJECUTIVA',
+    'EXPEDIENTE',
+    'FACULTAD',
+    'FORMATO',
+    'INFORMACION',
+    'RESOLUCION',
+    'REVISION',
+    'SENTENCIA',
+    'UNIDAD',
+    'VISTA',
+  ];
   const corporateMarkers = [
     'ASOCIACION',
     'BANCO',
@@ -646,6 +707,12 @@ function isLikelyPersonName(value: string): boolean {
   }
 
   const tokens = normalized.split(/\s+/u).filter(Boolean);
+  const meaningfulTokens = tokens.filter((token) => !isNameParticle(token));
+
+  if (meaningfulTokens.some((token) => disallowedNameTokens.includes(token))) {
+    return false;
+  }
+
   const particles = new Set([
     'DA',
     'DE',
@@ -663,9 +730,94 @@ function isLikelyPersonName(value: string): boolean {
   return (
     tokens.length >= 2 &&
     tokens.length <= 6 &&
+    meaningfulTokens.length >= 2 &&
     tokens.every((token) => token.length >= 2 || particles.has(token))
   );
 }
+
+function hasPersonNameSignal(value: string): boolean {
+  const originalTokens = value.split(/\s+/u).filter((token) => token.length > 0);
+  const normalizedTokens = normalizeForRules(value)
+    .split(/\s+/u)
+    .filter((token) => token.length > 0 && !isNameParticle(token));
+
+  if (normalizedTokens.length < 2) {
+    return false;
+  }
+
+  if (
+    originalTokens
+      .filter((token) => !isNameParticle(normalizeForRules(token)))
+      .every((token) => token === token.toUpperCase() && /\p{L}/u.test(token) && token.length > 2)
+  ) {
+    return true;
+  }
+
+  return normalizedTokens.some((token) => commonGivenNames.has(token));
+}
+
+function isOwnLine(text: string, startOffset: number, endOffset: number): boolean {
+  const lineStart = Math.max(text.lastIndexOf('\n', startOffset - 1) + 1, 0);
+  const nextLineBreak = text.indexOf('\n', endOffset);
+  const lineEnd = nextLineBreak === -1 ? text.length : nextLineBreak;
+
+  return (
+    text.slice(lineStart, startOffset).trim().length === 0 &&
+    text.slice(endOffset, lineEnd).trim().length === 0
+  );
+}
+
+function isNameParticle(token: string): boolean {
+  return ['DA', 'DE', 'DEL', 'DI', 'DOS', 'LA', 'LAS', 'LOS', 'VAN', 'VON', 'Y'].includes(token);
+}
+
+const commonGivenNames = new Set([
+  'ADRIANA',
+  'ALEJANDRA',
+  'ALEJANDRO',
+  'ANA',
+  'ANDREA',
+  'ANDRES',
+  'ANGELA',
+  'ANTONIO',
+  'BEATRIZ',
+  'CARLA',
+  'CARLOS',
+  'CARMEN',
+  'CLAUDIA',
+  'DANIEL',
+  'DIANA',
+  'DIEGO',
+  'EDUARDO',
+  'ELENA',
+  'FERNANDO',
+  'FRANCISCO',
+  'GABRIELA',
+  'JORGE',
+  'JOSE',
+  'JUAN',
+  'JULIO',
+  'LAURA',
+  'LUIS',
+  'LUISA',
+  'MARIA',
+  'MARIO',
+  'MARTIN',
+  'MIGUEL',
+  'MONICA',
+  'PATRICIA',
+  'PEDRO',
+  'RAFAEL',
+  'RICARDO',
+  'RITA',
+  'ROBERTO',
+  'ROSA',
+  'SANDRA',
+  'SOFIA',
+  'TERESA',
+  'VALERIA',
+  'VICTOR',
+]);
 
 function isLikelyOrganization(value: string): boolean {
   const normalized = normalizeForRules(value);
