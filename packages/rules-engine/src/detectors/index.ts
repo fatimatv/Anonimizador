@@ -235,7 +235,8 @@ const regexRules: DetectorRule[] = [
     replacementType: 'redact',
     ruleId: 'legal-person-name-context-v1',
     transformMatch: (match) => match[1] ?? match[0],
-    validate: isLikelyPersonName,
+    validate: (value, match, text) =>
+      isLikelyPersonName(value) && !isNonPersonalCoverFieldMatch(match, text),
   },
   {
     category: 'personal_data',
@@ -439,6 +440,7 @@ function detectStandalonePersonNames(
 
     if (
       !isLikelyPersonName(rawValue) ||
+      isNonPersonalCoverField(text, offsets.startOffset) ||
       (!hasPersonNameSignal(rawValue) && !isOwnLine(text, offsets.startOffset, offsets.endOffset))
     ) {
       continue;
@@ -671,17 +673,36 @@ function isLikelyPersonName(value: string): boolean {
     'CATEGORIAS',
     'CITA',
     'COMUNICACION',
+    'CONSUMIDOR',
     'CONTINUA',
+    'CORRECTIVAS',
+    'COSTAS',
+    'COSTOS',
+    'DEBER',
     'DOCUMENTO',
     'EDUCACION',
     'EJECUTIVA',
     'EXPEDIENTE',
     'FACULTAD',
     'FORMATO',
+    'GRADUACION',
+    'IDONEIDAD',
     'INFORMACION',
+    'INTERMEDIACION',
+    'MATERIAS',
+    'MEDIDAS',
+    'MONETARIA',
+    'OTROS',
+    'PARTE',
+    'PROCEDENCIA',
+    'PROCEDIMIENTO',
+    'PROTECCION',
     'RESOLUCION',
     'REVISION',
+    'SANCION',
     'SENTENCIA',
+    'SEDE',
+    'TIPOS',
     'UNIDAD',
     'VISTA',
   ];
@@ -818,6 +839,29 @@ const commonGivenNames = new Set([
   'VALERIA',
   'VICTOR',
 ]);
+
+function isNonPersonalCoverFieldMatch(match?: RegExpExecArray, text?: string): boolean {
+  if (!match || !text) {
+    return false;
+  }
+
+  return isNonPersonalCoverField(text, match.index);
+}
+
+function isNonPersonalCoverField(text: string, startOffset: number): boolean {
+  const lineStart = Math.max(text.lastIndexOf('\n', startOffset - 1) + 1, 0);
+  const lineEndIndex = text.indexOf('\n', startOffset);
+  const lineEnd = lineEndIndex === -1 ? text.length : lineEndIndex;
+  const linePrefix = normalizeForRules(text.slice(lineStart, startOffset));
+  const fullLine = normalizeForRules(text.slice(lineStart, lineEnd));
+  const nonPersonalLabels = ['ACTIVIDAD', 'MATERIA', 'MATERIAS', 'PROCEDENCIA', 'PROCEDIMIENTO'];
+
+  if (nonPersonalLabels.some((label) => linePrefix === label || linePrefix.endsWith(label))) {
+    return true;
+  }
+
+  return nonPersonalLabels.some((label) => fullLine.startsWith(`${label} `));
+}
 
 function isLikelyOrganization(value: string): boolean {
   const normalized = normalizeForRules(value);

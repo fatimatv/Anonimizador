@@ -355,6 +355,31 @@ describe('local detectors', () => {
     expect(result.detections).toHaveLength(0);
   });
 
+  it('does not anonymize Indecopi cover metadata, matters, activities, or legal entities', () => {
+    const result = detectSensitiveEntities(
+      [
+        'RESOLUCION 0440-2025/SPC-INDECOPI',
+        'EXPEDIENTE 2032-2023/CC1',
+        '',
+        'PROCEDENCIA : COMISIÓN DE PROTECCIÓN AL CONSUMIDOR - SEDE LIMA SUR N° 1',
+        'PROCEDIMIENTO : DE PARTE',
+        'DENUNCIANTE : PERCY ANTONIO VALDIVIA BUSTAMANTE',
+        'DENUNCIADO : BANCO DE CRÉDITO DEL PERÚ S.A.',
+        'MATERIAS : DEBER DE IDONEIDAD',
+        'GRADUACIÓN DE LA SANCIÓN',
+        'MEDIDAS CORRECTIVAS',
+        'COSTAS Y COSTOS',
+        'ACTIVIDAD : OTROS TIPOS DE INTERMEDIACIÓN MONETARIA',
+      ].join('\n'),
+    );
+
+    expect(result.detections).toEqual([
+      expect.objectContaining({
+        entityType: 'person_name',
+      }),
+    ]);
+  });
+
   it('detects controlled dictionaries for sensitive data', () => {
     const result = detectSensitiveEntities(
       'Historia clinica con diagnostico de cancer y huella dactilar de menor de edad.',
