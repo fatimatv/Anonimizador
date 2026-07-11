@@ -15,7 +15,7 @@ const corpus: CorpusCase[] = [
     text: 'Denunciante: Maria Elena Torres Vega DNI 12345678. Expediente: 1234-2024/CCO.',
   },
   {
-    expectedEntityTypes: ['ruc'],
+    expectedEntityTypes: [],
     name: 'provider legal entity with valid RUC',
     text: 'Proveedor: Banco de Lima SAC con RUC 20100070970.',
   },

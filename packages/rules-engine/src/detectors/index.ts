@@ -82,9 +82,9 @@ const regexRules: DetectorRule[] = [
     category: 'identifier',
     confidence: 0.96,
     entityType: 'ruc',
-    pattern: /\b(?:10|20)\d{9}\b/gu,
+    pattern: /\b10\d{9}\b/gu,
     replacementType: 'mask',
-    ruleId: 'peru-ruc-regex-v1',
+    ruleId: 'peru-natural-person-ruc-regex-v1',
     validate: isLikelyPeruRuc,
   },
   {

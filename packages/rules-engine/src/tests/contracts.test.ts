@@ -117,13 +117,13 @@ describe('local detectors', () => {
     expect(JSON.stringify(dni)).not.toContain('12345678');
   });
 
-  it('detects RUC values', () => {
-    const result = detectSensitiveEntities('RUC 20100070970 activo.');
+  it('detects natural person RUC values', () => {
+    const result = detectSensitiveEntities('RUC 10000000006 activo.');
 
     expect(result.detections).toEqual([
       expect.objectContaining({
         entityType: 'ruc',
-        previewMasked: '*******0970',
+        previewMasked: '*******0006',
       }),
     ]);
   });
@@ -214,7 +214,7 @@ describe('local detectors', () => {
   it('does not anonymize legal entity names with Peruvian company suffixes', () => {
     const result = detectSensitiveEntities('Proveedor: Banco de Lima SAC con RUC 20100070970.');
 
-    expect(result.detections.map((detection) => detection.entityType)).toEqual(['ruc']);
+    expect(result.detections).toHaveLength(0);
     expect(JSON.stringify(result.detections)).not.toContain('organization');
   });
 
@@ -228,7 +228,7 @@ describe('local detectors', () => {
       ].join('\n'),
     );
 
-    expect(result.detections.map((detection) => detection.entityType)).toEqual(['ruc']);
+    expect(result.detections).toHaveLength(0);
   });
 
   it('detects address, location, and person name context', () => {
