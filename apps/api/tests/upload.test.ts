@@ -109,6 +109,41 @@ function multipartPayload(files: MultipartFileInput[]) {
   };
 }
 
+function renderMultipartPayload(input: { fields: Record<string, string>; originalPdf: Buffer }) {
+  const boundary = `----codex-render-${randomUUID()}`;
+  const chunks: Buffer[] = [];
+
+  for (const [name, value] of Object.entries(input.fields)) {
+    chunks.push(
+      Buffer.from(
+        [`--${boundary}`, `Content-Disposition: form-data; name="${name}"`, '', value, ''].join(
+          '\r\n',
+        ),
+      ),
+    );
+  }
+
+  chunks.push(
+    Buffer.from(
+      [
+        `--${boundary}`,
+        'Content-Disposition: form-data; name="originalPdf"; filename="original.pdf"',
+        'Content-Type: application/pdf',
+        '',
+        '',
+      ].join('\r\n'),
+    ),
+  );
+  chunks.push(input.originalPdf);
+  chunks.push(Buffer.from('\r\n'));
+  chunks.push(Buffer.from(`--${boundary}--\r\n`));
+
+  return {
+    contentType: `multipart/form-data; boundary=${boundary}`,
+    payload: Buffer.concat(chunks),
+  };
+}
+
 async function createTextPdf(text: string): Promise<Buffer> {
   const document = await PDFDocument.create();
   const page = document.addPage([595.28, 841.89]);
@@ -664,6 +699,40 @@ describe('upload module', () => {
     expect(statelessDownloadResponse.statusCode).toBe(200);
     expect(statelessDownloadResponse.body).toContain('****5678');
     expect(statelessDownloadResponse.body).not.toContain('12345678');
+  });
+
+  it('renders stateless public PDF downloads using the original PDF geometry when provided', async () => {
+    const { app, cookieHeader } = await createUploadTestApp();
+    const originalPdf = await createTextPdf('DNI 12345678 para autoservicio PDF.');
+    const renderMultipart = renderMultipartPayload({
+      fields: {
+        format: 'pdf',
+        redactions: JSON.stringify([{ endOffset: 12, startOffset: 4 }]),
+        text: 'DNI ****5678 para autoservicio PDF.',
+      },
+      originalPdf,
+    });
+    const response = await app.inject({
+      headers: {
+        'content-type': renderMultipart.contentType,
+        cookie: cookieHeader,
+      },
+      method: 'POST',
+      payload: renderMultipart.payload,
+      url: '/documents/render-anonymized',
+    });
+
+    await app.close();
+
+    const extractedOutput = await extractPdfTextMap({
+      buffer: response.rawPayload,
+      ocrService: null,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toBe('application/pdf');
+    expect(response.rawPayload.subarray(0, 4).toString()).toBe('%PDF');
+    expect(extractedOutput.text).not.toContain('12345678');
   });
 
   it('allows reviewers and admins to preview anonymized text before approval', async () => {

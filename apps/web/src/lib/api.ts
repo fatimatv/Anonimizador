@@ -135,6 +135,7 @@ export async function publicLogin() {
 
 export async function logout() {
   return await apiJson<{ ok: boolean }>('/auth/logout', {
+    body: JSON.stringify({}),
     method: 'POST',
   });
 }
@@ -207,10 +208,37 @@ export async function downloadAnonymized(
 
 export async function renderAnonymizedText(input: {
   format: AnonymizedOutputFormat;
+  originalPdf?: File;
+  redactions?: Array<{ endOffset: number; startOffset: number }>;
   text: string;
 }) {
+  if (input.originalPdf) {
+    const formData = new FormData();
+
+    formData.append('format', input.format);
+    formData.append('text', input.text);
+    formData.append('redactions', JSON.stringify(input.redactions ?? []));
+    formData.append('originalPdf', input.originalPdf);
+
+    const response = await fetch(`${apiBase}/documents/render-anonymized`, {
+      body: formData,
+      credentials: 'include',
+      method: 'POST',
+    });
+
+    if (!response.ok) {
+      throw await apiErrorFrom(response);
+    }
+
+    return await response.blob();
+  }
+
   const response = await fetch(`${apiBase}/documents/render-anonymized`, {
-    body: JSON.stringify(input),
+    body: JSON.stringify({
+      format: input.format,
+      redactions: input.redactions,
+      text: input.text,
+    }),
     credentials: 'include',
     headers: {
       'content-type': 'application/json',

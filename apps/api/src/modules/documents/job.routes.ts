@@ -184,8 +184,8 @@ export async function registerJobRoutes(
       return reply.code(401).send({ error: 'authentication_required' });
     }
 
-    const body = request.body as { format?: unknown; text?: unknown };
-    const text = typeof body.text === 'string' ? body.text.replace(/\r\n/gu, '\n').trim() : '';
+    const body = await readStatelessRenderInput(request);
+    const text = body.text.replace(/\r\n/gu, '\n').trim();
     const format = resolveBodyDownloadFormat(body.format);
 
     if (text.length === 0 || text.length > 2_000_000) {
@@ -193,10 +193,19 @@ export async function registerJobRoutes(
     }
 
     const renderer = options.outputRendererService ?? new OutputRendererService();
-    const renderedOutput = await renderer.render({
-      format,
-      text,
-    });
+    const renderedOutput = await renderer.render(
+      body.originalPdfBuffer && format === 'pdf'
+        ? {
+            format,
+            originalPdfBuffer: body.originalPdfBuffer,
+            redactions: body.redactions,
+            text,
+          }
+        : {
+            format,
+            text,
+          },
+    );
 
     options.auditService.record({
       actorUserId: currentUser.id,
@@ -473,6 +482,97 @@ export async function registerJobRoutes(
       },
     };
   });
+}
+
+interface StatelessRenderInput {
+  format: unknown;
+  originalPdfBuffer?: Buffer;
+  redactions: Array<{ endOffset: number; startOffset: number }>;
+  text: string;
+}
+
+async function readStatelessRenderInput(request: FastifyRequest): Promise<StatelessRenderInput> {
+  if (request.isMultipart()) {
+    const input: StatelessRenderInput = {
+      format: 'txt',
+      redactions: [],
+      text: '',
+    };
+
+    for await (const part of request.parts()) {
+      if (part.type === 'file') {
+        if (part.fieldname === 'originalPdf') {
+          input.originalPdfBuffer = await part.toBuffer();
+        }
+
+        continue;
+      }
+
+      if (part.fieldname === 'format') {
+        input.format = part.value;
+        continue;
+      }
+
+      if (part.fieldname === 'text') {
+        input.text = typeof part.value === 'string' ? part.value : '';
+        continue;
+      }
+
+      if (part.fieldname === 'redactions' && typeof part.value === 'string') {
+        input.redactions = parseRedactions(part.value);
+      }
+    }
+
+    return input;
+  }
+
+  const body = request.body as { format?: unknown; redactions?: unknown; text?: unknown };
+
+  return {
+    format: body.format,
+    redactions: parseRedactions(body.redactions),
+    text: typeof body.text === 'string' ? body.text : '',
+  };
+}
+
+function parseRedactions(value: unknown): Array<{ endOffset: number; startOffset: number }> {
+  const parsed = typeof value === 'string' ? safeJsonParse(value) : value;
+
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+
+  return parsed
+    .map((candidate) => {
+      if (
+        typeof candidate === 'object' &&
+        candidate !== null &&
+        Number.isInteger((candidate as { startOffset?: unknown }).startOffset) &&
+        Number.isInteger((candidate as { endOffset?: unknown }).endOffset)
+      ) {
+        return {
+          endOffset: (candidate as { endOffset: number }).endOffset,
+          startOffset: (candidate as { startOffset: number }).startOffset,
+        };
+      }
+
+      return null;
+    })
+    .filter((candidate): candidate is { endOffset: number; startOffset: number } => {
+      return (
+        candidate !== null &&
+        candidate.startOffset >= 0 &&
+        candidate.endOffset > candidate.startOffset
+      );
+    });
+}
+
+function safeJsonParse(value: string): unknown {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
 }
 
 function resolveDownloadFormat(request: FastifyRequest): AnonymizedOutputFormat {

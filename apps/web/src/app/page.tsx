@@ -65,6 +65,9 @@ export default function HomePage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [files, setFiles] = useState<File[]>([]);
+  const [uploadedFilesByDocumentId, setUploadedFilesByDocumentId] = useState<Record<string, File>>(
+    {},
+  );
   const [uploadMode, setUploadMode] = useState<UploadMode>('single');
   const [jobDetail, setJobDetail] = useState<JobDetail | null>(null);
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
@@ -81,9 +84,7 @@ export default function HomePage() {
   }, [jobDetail, selectedDocumentId]);
   const canUpload = user?.role === 'admin' || user?.role === 'operator';
   const canReview =
-    user?.role === 'admin' ||
-    user?.role === 'reviewer' ||
-    (user?.role === 'operator' && jobDetail?.job.status === 'needs_review');
+    user?.role === 'admin' || user?.role === 'reviewer' || user?.role === 'operator';
 
   const showError = useCallback((error: unknown) => {
     if (error instanceof ApiError) {
@@ -168,6 +169,27 @@ export default function HomePage() {
     }
   }, [files, uploadMode]);
 
+  useEffect(() => {
+    if (!selectedDocument) {
+      return;
+    }
+
+    if (selectedDocument.mimeType === 'application/pdf') {
+      setDownloadFormat('pdf');
+      return;
+    }
+
+    if (
+      selectedDocument.mimeType ===
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ) {
+      setDownloadFormat('docx');
+      return;
+    }
+
+    setDownloadFormat('txt');
+  }, [selectedDocument?.id, selectedDocument?.mimeType]);
+
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -212,6 +234,7 @@ export default function HomePage() {
       setDetections([]);
       setAnonymizedPreview(null);
       setEditedPreview('');
+      setUploadedFilesByDocumentId({});
       setActiveTab('workspace');
     } catch (error) {
       showError(error);
@@ -233,8 +256,17 @@ export default function HomePage() {
 
     try {
       const upload = await uploadBatch(files);
+      const uploadedFiles = files;
+
       setJobDetail(upload);
       setSelectedDocumentId(upload.documents[0]?.id ?? null);
+      setUploadedFilesByDocumentId(
+        Object.fromEntries(
+          upload.documents
+            .map((document, index) => [document.id, uploadedFiles[index]] as const)
+            .filter((entry): entry is readonly [string, File] => entry[1] instanceof File),
+        ),
+      );
       setFiles([]);
       setNotice(upload.documents.length === 1 ? 'Documento procesado' : 'Lote procesado');
     } catch (error) {
@@ -253,20 +285,16 @@ export default function HomePage() {
 
       if (document?.anonymizedPreview && user?.role === 'operator') {
         const nextStatus = action === 'approve' ? 'approved' : 'rejected';
+        const nextPreview =
+          documentId === selectedDocumentId && editedPreview.trim().length > 0
+            ? editedPreview
+            : document.anonymizedPreview;
 
         setJobDetail((current) =>
-          current
-            ? {
-                documents: current.documents.map((candidate) =>
-                  candidate.id === documentId ? { ...candidate, status: nextStatus } : candidate,
-                ),
-                job: {
-                  ...current.job,
-                  status: nextStatus,
-                },
-              }
-            : current,
+          current ? updateDocumentLocally(current, documentId, nextStatus, nextPreview) : current,
         );
+        setAnonymizedPreview(nextPreview);
+        setEditedPreview(nextPreview);
         return;
       }
 
@@ -293,6 +321,31 @@ export default function HomePage() {
     setNotice(null);
 
     try {
+      const document = jobDetail?.documents.find(
+        (candidate) => candidate.id === selectedDocumentId,
+      );
+
+      if (document?.anonymizedPreview && user?.role === 'operator') {
+        setAnonymizedPreview(editedPreview);
+        setJobDetail((current) =>
+          current
+            ? {
+                ...current,
+                documents: current.documents.map((candidate) =>
+                  candidate.id === selectedDocumentId
+                    ? { ...candidate, anonymizedPreview: editedPreview }
+                    : candidate,
+                ),
+                job: {
+                  ...current.job,
+                },
+              }
+            : current,
+        );
+        setNotice('Vista anonimizada actualizada');
+        return;
+      }
+
       const result = await updateAnonymizedPreview({
         documentId: selectedDocumentId,
         text: editedPreview,
@@ -315,9 +368,22 @@ export default function HomePage() {
 
     try {
       const document = jobDetail?.documents.find((candidate) => candidate.id === documentId);
+      const originalPdf =
+        document &&
+        downloadFormat === 'pdf' &&
+        document.mimeType === 'application/pdf' &&
+        uploadedFilesByDocumentId[documentId]
+          ? uploadedFilesByDocumentId[documentId]
+          : null;
+      const redactions = document?.detections?.map((detection) => ({
+        endOffset: detection.endOffset,
+        startOffset: detection.startOffset,
+      }));
       const blob = document?.anonymizedPreview
         ? await renderAnonymizedText({
             format: downloadFormat,
+            ...(originalPdf ? { originalPdf } : {}),
+            ...(redactions ? { redactions } : {}),
             text: document.anonymizedPreview,
           })
         : await downloadAnonymized(documentId, downloadFormat);
@@ -345,6 +411,7 @@ export default function HomePage() {
       setDetections([]);
       setAnonymizedPreview(null);
       setEditedPreview('');
+      setUploadedFilesByDocumentId({});
       setNotice('Job eliminado');
     } catch (error) {
       showError(error);
@@ -983,6 +1050,47 @@ function roleLabel(user: CurrentUser): string {
 
 function userLabel(user: CurrentUser): string {
   return user.id === 'public-access-operator' ? 'Sesion publica temporal' : user.email;
+}
+
+function updateDocumentLocally(
+  current: JobDetail,
+  documentId: string,
+  nextStatus: string,
+  anonymizedPreview: string,
+): JobDetail {
+  const documents = current.documents.map((candidate) =>
+    candidate.id === documentId
+      ? { ...candidate, anonymizedPreview, status: nextStatus }
+      : candidate,
+  );
+
+  return {
+    documents,
+    job: {
+      ...current.job,
+      status: summarizeJobStatus(documents),
+    },
+  };
+}
+
+function summarizeJobStatus(documents: DocumentItem[]): string {
+  if (documents.some((document) => document.status === 'needs_review')) {
+    return 'needs_review';
+  }
+
+  if (documents.some((document) => document.status === 'failed')) {
+    return 'failed';
+  }
+
+  if (documents.length > 0 && documents.every((document) => document.status === 'approved')) {
+    return 'approved';
+  }
+
+  if (documents.length > 0 && documents.every((document) => document.status === 'rejected')) {
+    return 'rejected';
+  }
+
+  return 'completed';
 }
 
 function labelForStatus(status: string): string {

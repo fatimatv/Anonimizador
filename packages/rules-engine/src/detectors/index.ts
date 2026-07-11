@@ -377,6 +377,33 @@ function detectLegalNamedEntities(
     });
   }
 
+  const judicialSignaturePattern =
+    /^\s*([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ' -]{5,80})\s*\n\s*(?:relator(?:a)?|juez|jueza|magistrad[oa]|secretari[oa]|vocal|ponente|árbitro|arbitro)\b/gimu;
+
+  while ((match = judicialSignaturePattern.exec(text)) !== null) {
+    const rawValue = titleCaseName((match[1] ?? '').trim());
+
+    if (!isLikelyPersonName(rawValue)) {
+      continue;
+    }
+
+    const offsets = resolveOffsets(match, match[1] ?? match[0]);
+    const contextWindow = text.slice(Math.max(0, offsets.startOffset - 24), offsets.endOffset + 24);
+
+    detections.push({
+      category: 'personal_data',
+      confidence: 0.84,
+      contextWindowHash: hashValue(contextWindow, options.hashSecret),
+      endOffset: offsets.endOffset,
+      entityType: 'person_name',
+      previewMasked: '[PERSON_NAME REDACTADO]',
+      rawValueHash: hashValue(rawValue, options.hashSecret),
+      replacementType: 'redact',
+      ruleId: 'legal-judicial-signature-name-v1',
+      startOffset: offsets.startOffset,
+    });
+  }
+
   return detections;
 }
 

@@ -257,6 +257,27 @@ describe('local detectors', () => {
     expect(anonymized.anonymizedText).not.toContain('HASSELT');
   });
 
+  it('redacts judicial signature names in rulings', () => {
+    const text =
+      'Intimem-se e cumpra-se.\nSão Paulo, 12 de abril de 2022.\nMARIA LAURA TAVARES\nRelatora';
+    const detectionResult = detectSensitiveEntities(text);
+    const anonymized = anonymizeText({
+      detections: detectionResult.detections,
+      text,
+    });
+
+    expect(detectionResult.detections).toEqual([
+      expect.objectContaining({
+        entityType: 'person_name',
+        previewMasked: '[PERSON_NAME REDACTADO]',
+        replacementType: 'redact',
+        ruleId: 'legal-judicial-signature-name-v1',
+      }),
+    ]);
+    expect(anonymized.anonymizedText).toContain('[PERSON_NAME REDACTADO]');
+    expect(anonymized.anonymizedText).not.toContain('MARIA LAURA TAVARES');
+  });
+
   it('detects controlled dictionaries for sensitive data', () => {
     const result = detectSensitiveEntities(
       'Historia clinica con diagnostico de cancer y huella dactilar de menor de edad.',
