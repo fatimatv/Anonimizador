@@ -227,17 +227,6 @@ const regexRules: DetectorRule[] = [
     ruleId: 'location-context-v1',
   },
   {
-    category: 'confidential_data',
-    confidence: 0.88,
-    entityType: 'case_number',
-    pattern:
-      /\b(?:expediente|exp\.?|caso|resoluci[oó]n|res\.?|procedimiento|tr[aá]mite|carta\s+n[°º.]?)[:\s]*(?:n[°º.]?\s*)?([A-Z0-9][A-Z0-9./-]{4,40})\b/giu,
-    replacementType: 'pseudonymize',
-    ruleId: 'legal-case-number-context-v1',
-    transformMatch: (match) => match[1] ?? match[0],
-    validate: isLikelyCaseNumber,
-  },
-  {
     category: 'personal_data',
     confidence: 0.82,
     entityType: 'person_name',
@@ -602,17 +591,6 @@ function isLikelyBankAccount(value: string): boolean {
   return digits.length >= 10 && digits.length <= 20 && !/^(\d)\1+$/u.test(digits);
 }
 
-function isLikelyCaseNumber(value: string): boolean {
-  const normalized = value.trim();
-
-  return (
-    normalized.length >= 5 &&
-    /[0-9]/u.test(normalized) &&
-    /[-/.]/u.test(normalized) &&
-    !/^\d{8}$/u.test(normalized)
-  );
-}
-
 function isLikelyPersonName(value: string): boolean {
   if (/\d/u.test(value)) {
     return false;
@@ -665,6 +643,10 @@ function isLikelyPersonName(value: string): boolean {
 function isLikelyOrganization(value: string): boolean {
   const normalized = normalizeForRules(value);
 
+  if (hasPeruLegalEntitySuffix(normalized)) {
+    return false;
+  }
+
   if (
     isLikelyPersonName(value) &&
     !/\b(?:SAC|SA|SRL|EIRL|BANCO|ASOCIACION|EMPRESA)\b/u.test(normalized)
@@ -695,6 +677,10 @@ function isLikelyOrganization(value: string): boolean {
     normalized.split(/\s+/u).filter(Boolean).length >= 2 &&
     organizationMarkers.some((marker) => normalized.includes(marker))
   );
+}
+
+function hasPeruLegalEntitySuffix(normalized: string): boolean {
+  return /\b(?:S\s*A\s*C|SAC|S\s*A|SA|S\s*R\s*L|SRL|EIRL|E\s*I\s*R\s*L)\b/u.test(normalized);
 }
 
 function titleCaseName(value: string): string {

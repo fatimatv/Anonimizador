@@ -10,13 +10,13 @@ interface CorpusCase {
 
 const corpus: CorpusCase[] = [
   {
-    expectedEntityTypes: ['person_name', 'dni', 'case_number'],
-    name: 'legal party with DNI and case number',
+    expectedEntityTypes: ['person_name', 'dni'],
+    name: 'legal party with DNI and non-personal case number',
     text: 'Denunciante: Maria Elena Torres Vega DNI 12345678. Expediente: 1234-2024/CCO.',
   },
   {
-    expectedEntityTypes: ['organization', 'ruc'],
-    name: 'provider organization with valid RUC',
+    expectedEntityTypes: ['ruc'],
+    name: 'provider legal entity with valid RUC',
     text: 'Proveedor: Banco de Lima SAC con RUC 20100070970.',
   },
   {

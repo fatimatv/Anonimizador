@@ -202,24 +202,33 @@ describe('local detectors', () => {
     expect(result.detections).toHaveLength(0);
   });
 
-  it('detects legal case numbers when the code is extractable', () => {
-    const result = detectSensitiveEntities('Expediente: 1234-2024/CCO');
+  it('does not anonymize expediente or resolution numbers', () => {
+    const result = detectSensitiveEntities(
+      'Expediente: 1234-2024/CCO. Resolución N.º 014-2025/MPP-SIA.',
+    );
 
-    expect(result.detections).toEqual([
-      expect.objectContaining({
-        entityType: 'case_number',
-        replacementType: 'pseudonymize',
-      }),
-    ]);
+    expect(result.detections.map((detection) => detection.entityType)).not.toContain('case_number');
+    expect(result.detections).toHaveLength(0);
   });
 
-  it('detects organizations with legal context', () => {
+  it('does not anonymize legal entity names with Peruvian company suffixes', () => {
     const result = detectSensitiveEntities('Proveedor: Banco de Lima SAC con RUC 20100070970.');
 
-    expect(result.detections.map((detection) => detection.entityType)).toEqual([
-      'organization',
-      'ruc',
-    ]);
+    expect(result.detections.map((detection) => detection.entityType)).toEqual(['ruc']);
+    expect(JSON.stringify(result.detections)).not.toContain('organization');
+  });
+
+  it('preserves S.A., S.A.C., SRL, and EIRL company names', () => {
+    const result = detectSensitiveEntities(
+      [
+        'Razón social: Consultora Legal S.A.',
+        'Proveedor: Servicios Integrales S.A.C. con RUC 20100070970.',
+        'Empresa: Soluciones Digitales SRL.',
+        'Contratista: Archivo Seguro EIRL.',
+      ].join('\n'),
+    );
+
+    expect(result.detections.map((detection) => detection.entityType)).toEqual(['ruc']);
   });
 
   it('detects address, location, and person name context', () => {
