@@ -218,10 +218,11 @@ describe('local detectors', () => {
     expect(JSON.stringify(result.detections)).not.toContain('organization');
   });
 
-  it('preserves S.A., S.A.C., SRL, and EIRL company names', () => {
+  it('preserves S.A., S.A.A., S.A.C., SRL, and EIRL company names', () => {
     const result = detectSensitiveEntities(
       [
         'Razón social: Consultora Legal S.A.',
+        'Denunciado: SCOTIABANK PERÚ S.A.A.',
         'Proveedor: Servicios Integrales S.A.C. con RUC 20100070970.',
         'Empresa: Soluciones Digitales SRL.',
         'Contratista: Archivo Seguro EIRL.',

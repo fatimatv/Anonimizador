@@ -236,7 +236,10 @@ const regexRules: DetectorRule[] = [
     ruleId: 'legal-person-name-context-v1',
     transformMatch: (match) => match[1] ?? match[0],
     validate: (value, match, text) =>
-      isLikelyPersonName(value) && !isNonPersonalCoverFieldMatch(match, text),
+      isLikelyPersonName(value) &&
+      !isNonPersonalCoverFieldMatch(match, text) &&
+      !lineHasPeruLegalEntitySuffixMatch(match, text) &&
+      !isFollowedByPeruLegalEntitySuffixMatch(match, text),
   },
   {
     category: 'personal_data',
@@ -441,6 +444,8 @@ function detectStandalonePersonNames(
     if (
       !isLikelyPersonName(rawValue) ||
       isNonPersonalCoverField(text, offsets.startOffset) ||
+      lineHasPeruLegalEntitySuffix(text, offsets.startOffset) ||
+      isFollowedByPeruLegalEntitySuffix(text, offsets.endOffset) ||
       (!hasPersonNameSignal(rawValue) && !isOwnLine(text, offsets.startOffset, offsets.endOffset))
     ) {
       continue;
@@ -716,7 +721,9 @@ function isLikelyPersonName(value: string): boolean {
     'INDECOPI',
     'MUNICIPALIDAD',
     'S A',
+    'S A A',
     'SA',
+    'SAA',
     'SAC',
     'S R L',
     'SRL',
@@ -863,6 +870,39 @@ function isNonPersonalCoverField(text: string, startOffset: number): boolean {
   return nonPersonalLabels.some((label) => fullLine.startsWith(`${label} `));
 }
 
+function isFollowedByPeruLegalEntitySuffixMatch(match?: RegExpExecArray, text?: string): boolean {
+  if (!match || !text) {
+    return false;
+  }
+
+  const rawValue = match[1] ?? match[0];
+  const offsets = resolveOffsets(match, rawValue);
+
+  return isFollowedByPeruLegalEntitySuffix(text, offsets.endOffset);
+}
+
+function isFollowedByPeruLegalEntitySuffix(text: string, endOffset: number): boolean {
+  const rightContext = normalizeForRules(text.slice(endOffset, endOffset + 24));
+
+  return /^(?:S A A|SAA|S A C|SAC|S A|SA|S R L|SRL|EIRL|E I R L)\b/u.test(rightContext);
+}
+
+function lineHasPeruLegalEntitySuffixMatch(match?: RegExpExecArray, text?: string): boolean {
+  if (!match || !text) {
+    return false;
+  }
+
+  return lineHasPeruLegalEntitySuffix(text, match.index);
+}
+
+function lineHasPeruLegalEntitySuffix(text: string, offset: number): boolean {
+  const lineStart = Math.max(text.lastIndexOf('\n', offset - 1) + 1, 0);
+  const lineEndIndex = text.indexOf('\n', offset);
+  const lineEnd = lineEndIndex === -1 ? text.length : lineEndIndex;
+
+  return hasPeruLegalEntitySuffix(normalizeForRules(text.slice(lineStart, lineEnd)));
+}
+
 function isLikelyOrganization(value: string): boolean {
   const normalized = normalizeForRules(value);
 
@@ -872,7 +912,7 @@ function isLikelyOrganization(value: string): boolean {
 
   if (
     isLikelyPersonName(value) &&
-    !/\b(?:SAC|SA|SRL|EIRL|BANCO|ASOCIACION|EMPRESA)\b/u.test(normalized)
+    !/\b(?:SAA|SAC|SA|SRL|EIRL|BANCO|ASOCIACION|EMPRESA)\b/u.test(normalized)
   ) {
     return false;
   }
@@ -889,7 +929,9 @@ function isLikelyOrganization(value: string): boolean {
     'INSTITUTO',
     'MUNICIPALIDAD',
     'S A',
+    'S A A',
     'SA',
+    'SAA',
     'SAC',
     'S R L',
     'SRL',
@@ -903,7 +945,9 @@ function isLikelyOrganization(value: string): boolean {
 }
 
 function hasPeruLegalEntitySuffix(normalized: string): boolean {
-  return /\b(?:S\s*A\s*C|SAC|S\s*A|SA|S\s*R\s*L|SRL|EIRL|E\s*I\s*R\s*L)\b/u.test(normalized);
+  return /\b(?:S\s*A\s*A|SAA|S\s*A\s*C|SAC|S\s*A|SA|S\s*R\s*L|SRL|EIRL|E\s*I\s*R\s*L)\b/u.test(
+    normalized,
+  );
 }
 
 function titleCaseName(value: string): string {
