@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   BookOpen,
   CheckCircle2,
+  ClipboardCheck,
   Download,
   Eye,
   Files,
@@ -85,6 +86,12 @@ export default function HomePage() {
   const canUpload = user?.role === 'admin' || user?.role === 'operator';
   const canReview =
     user?.role === 'admin' || user?.role === 'reviewer' || user?.role === 'operator';
+  const nextAction = getNextAction({
+    canReview,
+    filesCount: files.length,
+    jobDetail,
+    selectedDocument,
+  });
 
   const showError = useCallback((error: unknown) => {
     if (error instanceof ApiError) {
@@ -533,7 +540,7 @@ export default function HomePage() {
               type="button"
             >
               <UploadCloud size={17} aria-hidden="true" />
-              Procesar
+              Trabajo
             </button>
             <button
               aria-pressed={activeTab === 'methodology'}
@@ -572,160 +579,225 @@ export default function HomePage() {
       {activeTab === 'methodology' ? (
         <MethodologyView />
       ) : (
-        <div className="mx-auto grid max-w-7xl gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[360px_1fr]">
-          <aside className="space-y-5">
-            <section className="ialaw-card ialaw-card--accent p-5">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-base font-extrabold text-[#011EF4]">Carga</h2>
-                <UploadCloud className="text-[#011EF4]" size={20} aria-hidden="true" />
-              </div>
-              <form onSubmit={handleUpload} className="mt-4 space-y-4">
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    aria-pressed={uploadMode === 'single'}
-                    className={
-                      uploadMode === 'single'
-                        ? 'inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#011EF4] px-3 text-sm font-bold text-white'
-                        : 'inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#dfe3ef] bg-white px-3 text-sm font-bold text-[#374151]'
-                    }
-                    disabled={busy}
-                    onClick={() => setUploadMode('single')}
-                    type="button"
-                  >
-                    <FileText size={16} aria-hidden="true" />
-                    Documento
-                  </button>
-                  <button
-                    aria-pressed={uploadMode === 'batch'}
-                    className={
-                      uploadMode === 'batch'
-                        ? 'inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#011EF4] px-3 text-sm font-bold text-white'
-                        : 'inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#dfe3ef] bg-white px-3 text-sm font-bold text-[#374151]'
-                    }
-                    disabled={busy}
-                    onClick={() => setUploadMode('batch')}
-                    type="button"
-                  >
-                    <Files size={16} aria-hidden="true" />
-                    Lote
-                  </button>
+        <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6">
+          <WorkflowGuide activeStep={nextAction.step} />
+          <div className="mt-5 grid gap-5 lg:grid-cols-[360px_1fr]">
+            <aside className="space-y-5">
+              <section className="ialaw-card ialaw-card--accent p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-base font-extrabold text-[#011EF4]">1. Cargar</h2>
+                    <p className="mt-1 text-xs leading-5 text-[#6F7072]">
+                      Selecciona el archivo y luego inicia el procesamiento.
+                    </p>
+                  </div>
+                  <UploadCloud className="text-[#011EF4]" size={20} aria-hidden="true" />
                 </div>
-                <input
-                  key={uploadMode}
-                  className="block w-full text-sm file:mr-3 file:h-10 file:rounded-md file:border-0 file:bg-[#011EF4] file:px-3 file:text-sm file:font-bold file:text-white"
-                  disabled={!canUpload || busy}
-                  multiple={uploadMode === 'batch'}
-                  onChange={(event) => {
-                    const selectedFiles = Array.from(event.target.files ?? []);
+                <form onSubmit={handleUpload} className="mt-4 space-y-4">
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      aria-pressed={uploadMode === 'single'}
+                      className={
+                        uploadMode === 'single'
+                          ? 'inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#011EF4] px-3 text-sm font-bold text-white'
+                          : 'inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#dfe3ef] bg-white px-3 text-sm font-bold text-[#374151]'
+                      }
+                      disabled={busy}
+                      onClick={() => setUploadMode('single')}
+                      type="button"
+                    >
+                      <FileText size={16} aria-hidden="true" />
+                      Documento
+                    </button>
+                    <button
+                      aria-pressed={uploadMode === 'batch'}
+                      className={
+                        uploadMode === 'batch'
+                          ? 'inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#011EF4] px-3 text-sm font-bold text-white'
+                          : 'inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#dfe3ef] bg-white px-3 text-sm font-bold text-[#374151]'
+                      }
+                      disabled={busy}
+                      onClick={() => setUploadMode('batch')}
+                      type="button"
+                    >
+                      <Files size={16} aria-hidden="true" />
+                      Lote
+                    </button>
+                  </div>
+                  <input
+                    key={uploadMode}
+                    className="block w-full text-sm file:mr-3 file:h-10 file:rounded-md file:border-0 file:bg-[#011EF4] file:px-3 file:text-sm file:font-bold file:text-white"
+                    disabled={!canUpload || busy}
+                    multiple={uploadMode === 'batch'}
+                    onChange={(event) => {
+                      const selectedFiles = Array.from(event.target.files ?? []);
 
-                    setFiles(uploadMode === 'single' ? selectedFiles.slice(0, 1) : selectedFiles);
-                  }}
-                  type="file"
-                  accept=".txt,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                />
-                <div className="min-h-10 rounded-md bg-[#f4f6fb] px-3 py-2 text-sm text-[#6F7072]">
-                  {files.length > 0
-                    ? files.length === 1
-                      ? '1 documento seleccionado'
-                      : `${files.length} documentos seleccionados`
-                    : 'Sin documentos'}
-                </div>
-                <button
-                  className="ialaw-button-primary w-full"
-                  disabled={!canUpload || busy}
-                  type="submit"
-                >
-                  <UploadCloud size={17} aria-hidden="true" />
-                  {uploadMode === 'single' ? 'Procesar documento' : 'Procesar lote'}
-                </button>
-              </form>
-            </section>
-
-            <section className="ialaw-card p-5">
-              <h2 className="text-base font-extrabold text-[#011EF4]">Job</h2>
-              {jobDetail ? (
-                <>
-                  <div className="mt-4 grid gap-3 text-sm">
-                    <Metric label="Estado" value={labelForStatus(jobDetail.job.status)} />
-                    <Metric label="Archivos" value={String(jobDetail.job.totalFiles)} />
-                    <Metric label="Riesgo" value={jobDetail.job.riskLevel ?? 'low'} />
+                      setFiles(uploadMode === 'single' ? selectedFiles.slice(0, 1) : selectedFiles);
+                    }}
+                    type="file"
+                    accept=".txt,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  />
+                  <div className="min-h-10 rounded-md bg-[#f4f6fb] px-3 py-2 text-sm text-[#6F7072]">
+                    {files.length > 0 ? (
+                      <ul className="space-y-1">
+                        {files.slice(0, 4).map((file) => (
+                          <li className="truncate" key={`${file.name}-${file.size}`}>
+                            {file.name}
+                          </li>
+                        ))}
+                        {files.length > 4 ? <li>{files.length - 4} documentos mas</li> : null}
+                      </ul>
+                    ) : (
+                      'Aun no hay documentos seleccionados'
+                    )}
                   </div>
                   <button
-                    className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-950 disabled:opacity-50"
-                    disabled={busy || user.role === 'reviewer'}
-                    onClick={handleDeleteJob}
-                    title="Eliminar job"
-                    type="button"
+                    className="ialaw-button-primary w-full"
+                    disabled={!canUpload || busy}
+                    type="submit"
                   >
-                    <Trash2 size={17} aria-hidden="true" />
-                    Eliminar job
+                    <UploadCloud size={17} aria-hidden="true" />
+                    {uploadMode === 'single' ? 'Procesar documento' : 'Procesar lote'}
                   </button>
-                </>
+                </form>
+              </section>
+
+              <section className="ialaw-card p-5">
+                <h2 className="text-base font-extrabold text-[#011EF4]">Siguiente acción</h2>
+                <p className="mt-3 text-sm font-bold text-[#111827]">{nextAction.title}</p>
+                <p className="mt-2 text-sm leading-6 text-[#6F7072]">{nextAction.body}</p>
+              </section>
+
+              <section className="ialaw-card p-5">
+                <h2 className="text-base font-extrabold text-[#011EF4]">Job</h2>
+                {jobDetail ? (
+                  <>
+                    <div className="mt-4 grid gap-3 text-sm">
+                      <Metric label="Estado" value={labelForStatus(jobDetail.job.status)} />
+                      <Metric label="Archivos" value={String(jobDetail.job.totalFiles)} />
+                      <Metric label="Riesgo" value={jobDetail.job.riskLevel ?? 'low'} />
+                    </div>
+                    <button
+                      className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-950 disabled:opacity-50"
+                      disabled={busy || user.role === 'reviewer'}
+                      onClick={handleDeleteJob}
+                      title="Eliminar job"
+                      type="button"
+                    >
+                      <Trash2 size={17} aria-hidden="true" />
+                      Eliminar carga
+                    </button>
+                  </>
+                ) : (
+                  <p className="mt-4 text-sm text-[#6F7072]">No hay lote activo.</p>
+                )}
+              </section>
+
+              {notice ? <Notice message={notice} /> : null}
+            </aside>
+
+            <section className="ialaw-card overflow-hidden">
+              <div className="flex items-center justify-between border-b border-[#dfe3ef] px-5 py-4">
+                <div>
+                  <h2 className="text-base font-extrabold text-[#011EF4]">2. Revisar documentos</h2>
+                  <p className="mt-1 text-xs leading-5 text-[#6F7072]">
+                    Elige un documento de la lista y revisa el texto anonimizado abajo.
+                  </p>
+                </div>
+                <FileText className="text-[#011EF4]" size={20} aria-hidden="true" />
+              </div>
+              {jobDetail ? (
+                <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_360px]">
+                  <div className="min-w-0">
+                    <div className="divide-y divide-[#dfe3ef]">
+                      {jobDetail.documents.map((document, index) => (
+                        <DocumentRow
+                          document={document}
+                          index={index}
+                          isSelected={document.id === selectedDocumentId}
+                          key={document.id}
+                          onSelect={() => setSelectedDocumentId(document.id)}
+                        />
+                      ))}
+                    </div>
+                    <ReviewPanel
+                      anonymizedPreview={anonymizedPreview}
+                      busy={busy}
+                      canReview={canReview}
+                      document={selectedDocument}
+                      downloadFormat={downloadFormat}
+                      editedPreview={editedPreview}
+                      onDownloadFormatChange={setDownloadFormat}
+                      onEditedPreviewChange={setEditedPreview}
+                      onApprove={() =>
+                        selectedDocument ? handleReview(selectedDocument.id, 'approve') : undefined
+                      }
+                      onDownload={() =>
+                        selectedDocument ? handleDownload(selectedDocument.id) : undefined
+                      }
+                      onReject={() =>
+                        selectedDocument ? handleReview(selectedDocument.id, 'reject') : undefined
+                      }
+                      onSavePreview={handleSavePreview}
+                    />
+                  </div>
+                  <DetectionPanel document={selectedDocument} detections={detections} />
+                </div>
               ) : (
-                <p className="mt-4 text-sm text-[#6F7072]">No hay lote activo.</p>
+                <div className="p-8 text-sm text-[#6F7072]">
+                  Carga un documento o un lote para ver resultados.
+                </div>
               )}
             </section>
-
-            {notice ? <Notice message={notice} /> : null}
-          </aside>
-
-          <section className="ialaw-card overflow-hidden">
-            <div className="flex items-center justify-between border-b border-[#dfe3ef] px-5 py-4">
-              <h2 className="text-base font-extrabold text-[#011EF4]">Documentos</h2>
-              <FileText className="text-[#011EF4]" size={20} aria-hidden="true" />
-            </div>
-            {jobDetail ? (
-              <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_360px]">
-                <div className="min-w-0">
-                  <div className="divide-y divide-[#dfe3ef]">
-                    {jobDetail.documents.map((document) => (
-                      <DocumentRow
-                        canReview={canReview}
-                        document={document}
-                        isSelected={document.id === selectedDocumentId}
-                        key={document.id}
-                        onApprove={() => handleReview(document.id, 'approve')}
-                        onDownload={() => handleDownload(document.id)}
-                        onReject={() => handleReview(document.id, 'reject')}
-                        onSelect={() => setSelectedDocumentId(document.id)}
-                        busy={busy}
-                      />
-                    ))}
-                  </div>
-                  <ReviewPanel
-                    anonymizedPreview={anonymizedPreview}
-                    busy={busy}
-                    canReview={canReview}
-                    document={selectedDocument}
-                    downloadFormat={downloadFormat}
-                    editedPreview={editedPreview}
-                    onDownloadFormatChange={setDownloadFormat}
-                    onEditedPreviewChange={setEditedPreview}
-                    onSavePreview={handleSavePreview}
-                  />
-                </div>
-                <DetectionPanel document={selectedDocument} detections={detections} />
-              </div>
-            ) : (
-              <div className="p-8 text-sm text-[#6F7072]">
-                Carga un documento o un lote para ver resultados.
-              </div>
-            )}
-          </section>
+          </div>
         </div>
       )}
     </main>
   );
 }
 
+function WorkflowGuide(props: { activeStep: number }) {
+  const steps = [
+    { icon: <UploadCloud size={17} aria-hidden="true" />, label: 'Cargar' },
+    { icon: <Eye size={17} aria-hidden="true" />, label: 'Revisar' },
+    { icon: <ClipboardCheck size={17} aria-hidden="true" />, label: 'Aprobar' },
+    { icon: <Download size={17} aria-hidden="true" />, label: 'Descargar' },
+  ];
+
+  return (
+    <nav className="workflow-guide" aria-label="Flujo de anonimización">
+      {steps.map((step, index) => {
+        const stepNumber = index + 1;
+        const isActive = stepNumber === props.activeStep;
+        const isDone = stepNumber < props.activeStep;
+
+        return (
+          <div
+            className={
+              isActive
+                ? 'workflow-step workflow-step--active'
+                : isDone
+                  ? 'workflow-step workflow-step--done'
+                  : 'workflow-step'
+            }
+            key={step.label}
+          >
+            <span className="workflow-step__icon">
+              {isDone ? <CheckCircle2 size={17} /> : step.icon}
+            </span>
+            <span className="workflow-step__number">Paso {stepNumber}</span>
+            <span className="workflow-step__label">{step.label}</span>
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
+
 function DocumentRow(props: {
-  busy: boolean;
-  canReview: boolean;
   document: DocumentItem;
+  index: number;
   isSelected: boolean;
-  onApprove: () => void;
-  onDownload: () => void;
-  onReject: () => void;
   onSelect: () => void;
 }) {
   const { document } = props;
@@ -733,10 +805,16 @@ function DocumentRow(props: {
   const replacements = document.validationSummary?.anonymization?.replacementsApplied ?? 0;
 
   return (
-    <article className={props.isSelected ? 'bg-[#011EF4]/[0.04] p-5' : 'bg-white p-5'}>
+    <article
+      className={props.isSelected ? 'document-row document-row--selected' : 'document-row'}
+      data-selected={props.isSelected ? 'true' : 'false'}
+    >
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-md bg-[#eef2ff] px-2 py-1 text-xs font-extrabold text-[#011EF4]">
+              Documento {props.index + 1}
+            </span>
             <span className="inline-flex items-center rounded-md bg-[#011EF4] px-2 py-1 text-xs font-extrabold text-white">
               {labelForStatus(document.status)}
             </span>
@@ -751,52 +829,16 @@ function DocumentRow(props: {
             <DocumentStat label="Reemplazos" value={String(replacements)} />
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            aria-pressed={props.isSelected}
-            className={
-              props.isSelected
-                ? 'icon-button border-[#011EF4] bg-[#011EF4] text-white'
-                : 'icon-button'
-            }
-            onClick={props.onSelect}
-            title="Ver detecciones"
-            type="button"
-          >
-            <Eye size={17} aria-hidden="true" />
-            Ver
-          </button>
-          <button
-            className="icon-button"
-            disabled={!props.canReview || props.busy || document.status !== 'needs_review'}
-            onClick={props.onApprove}
-            title="Aprobar"
-            type="button"
-          >
-            <CheckCircle2 size={17} aria-hidden="true" />
-            Aprobar
-          </button>
-          <button
-            className="icon-button"
-            disabled={!props.canReview || props.busy || document.status !== 'needs_review'}
-            onClick={props.onReject}
-            title="Rechazar"
-            type="button"
-          >
-            <XCircle size={17} aria-hidden="true" />
-            Rechazar
-          </button>
-          <button
-            className="icon-button"
-            disabled={props.busy || document.status !== 'approved'}
-            onClick={props.onDownload}
-            title="Descargar"
-            type="button"
-          >
-            <Download size={17} aria-hidden="true" />
-            Descargar
-          </button>
-        </div>
+        <button
+          aria-pressed={props.isSelected}
+          className={props.isSelected ? 'icon-button is-active' : 'icon-button'}
+          onClick={props.onSelect}
+          title="Seleccionar documento"
+          type="button"
+        >
+          <Eye size={17} aria-hidden="true" />
+          {props.isSelected ? 'Seleccionado' : 'Revisar'}
+        </button>
       </div>
     </article>
   );
@@ -818,19 +860,24 @@ function ReviewPanel(props: {
   document: DocumentItem | null;
   downloadFormat: AnonymizedOutputFormat;
   editedPreview: string;
+  onApprove: () => Promise<void> | void | undefined;
+  onDownload: () => Promise<void> | void | undefined;
   onDownloadFormatChange: (format: AnonymizedOutputFormat) => void;
   onEditedPreviewChange: (text: string) => void;
+  onReject: () => Promise<void> | void | undefined;
   onSavePreview: () => void;
 }) {
   const document = props.document;
   const totalEntities = document?.detectionSummary?.totalEntities ?? 0;
   const replacements = document?.validationSummary?.anonymization?.replacementsApplied ?? 0;
+  const canEdit = Boolean(document && props.canReview && document.status === 'needs_review');
+  const canDownload = Boolean(document && document.status === 'approved');
 
   return (
     <section className="border-t border-[#dfe3ef] bg-white p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h3 className="text-base font-extrabold text-[#011EF4]">Vista de revisión</h3>
+          <h3 className="text-base font-extrabold text-[#011EF4]">3. Corregir y aprobar</h3>
           {document ? (
             <p className="mt-1 font-mono text-xs text-[#6F7072]">
               {shortDocumentId(document.id)} · {labelForStatus(document.status)}
@@ -842,7 +889,7 @@ function ReviewPanel(props: {
             <Metric label="Detecciones" value={String(totalEntities)} />
             <Metric label="Reemplazos" value={String(replacements)} />
             <label className="min-w-[120px] text-xs font-extrabold uppercase text-[#6F7072]">
-              Formato
+              Descargar como
               <select
                 className="ialaw-input mt-1 h-9 py-1 text-sm normal-case"
                 value={props.downloadFormat}
@@ -859,8 +906,14 @@ function ReviewPanel(props: {
         ) : null}
       </div>
 
+      {document ? (
+        <div className="mt-4 rounded-md border border-[#dfe3ef] bg-[#f8fafc] p-3 text-sm leading-6 text-[#374151]">
+          {reviewInstructionFor(document)}
+        </div>
+      ) : null}
+
       <div className="mt-4 min-h-[360px] max-h-[560px] overflow-auto rounded-md border border-[#dfe3ef] bg-[#f8fafc]">
-        {document && props.canReview && document.status === 'needs_review' ? (
+        {canEdit ? (
           <textarea
             className="min-h-[360px] w-full resize-y bg-transparent p-4 font-mono text-sm leading-6 text-[#111827] outline-none"
             value={props.editedPreview}
@@ -875,17 +928,54 @@ function ReviewPanel(props: {
           <p className="p-4 text-sm text-[#6F7072]">Selecciona un documento.</p>
         )}
       </div>
-      {document && props.canReview && document.status === 'needs_review' ? (
-        <button
-          className="icon-button mt-3"
-          disabled={props.busy || props.editedPreview.trim().length === 0}
-          onClick={props.onSavePreview}
-          title="Guardar corrección"
-          type="button"
-        >
-          <Save size={17} aria-hidden="true" />
-          Guardar corrección
-        </button>
+
+      {document ? (
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          {canEdit ? (
+            <>
+              <button
+                className="icon-button"
+                disabled={props.busy || props.editedPreview.trim().length === 0}
+                onClick={props.onSavePreview}
+                title="Guardar corrección"
+                type="button"
+              >
+                <Save size={17} aria-hidden="true" />
+                Guardar cambios
+              </button>
+              <button
+                className="ialaw-button-primary"
+                disabled={props.busy || props.editedPreview.trim().length === 0}
+                onClick={props.onApprove}
+                title="Aprobar documento"
+                type="button"
+              >
+                <CheckCircle2 size={17} aria-hidden="true" />
+                Aprobar
+              </button>
+              <button
+                className="icon-button"
+                disabled={props.busy}
+                onClick={props.onReject}
+                title="Rechazar documento"
+                type="button"
+              >
+                <XCircle size={17} aria-hidden="true" />
+                Rechazar
+              </button>
+            </>
+          ) : null}
+          <button
+            className={canDownload ? 'ialaw-button-primary ialaw-button-yellow' : 'icon-button'}
+            disabled={props.busy || !canDownload}
+            onClick={props.onDownload}
+            title="Descargar documento anonimizado"
+            type="button"
+          >
+            <Download size={17} aria-hidden="true" />
+            Descargar anonimizado
+          </button>
+        </div>
       ) : null}
     </section>
   );
@@ -1050,6 +1140,85 @@ function roleLabel(user: CurrentUser): string {
 
 function userLabel(user: CurrentUser): string {
   return user.id === 'public-access-operator' ? 'Sesion publica temporal' : user.email;
+}
+
+function getNextAction(input: {
+  canReview: boolean;
+  filesCount: number;
+  jobDetail: JobDetail | null;
+  selectedDocument: DocumentItem | null;
+}): { body: string; step: number; title: string } {
+  if (!input.jobDetail) {
+    if (input.filesCount > 0) {
+      return {
+        body: 'Haz clic en Procesar para iniciar la deteccion y generar la vista anonimizada.',
+        step: 1,
+        title: 'Procesa los documentos seleccionados',
+      };
+    }
+
+    return {
+      body: 'Empieza seleccionando un PDF, DOCX o TXT. Si son varios archivos, cambia a modo Lote.',
+      step: 1,
+      title: 'Selecciona documentos',
+    };
+  }
+
+  if (!input.selectedDocument) {
+    return {
+      body: 'Elige un documento de la lista para ver detecciones, texto anonimizado y acciones.',
+      step: 2,
+      title: 'Selecciona un documento',
+    };
+  }
+
+  if (input.selectedDocument.status === 'needs_review') {
+    return {
+      body: input.canReview
+        ? 'Lee la vista anonimizada, corrige lo necesario y luego aprueba desde el panel de revision.'
+        : 'Este documento requiere revision por un usuario autorizado antes de descargar.',
+      step: 3,
+      title: 'Revisa antes de aprobar',
+    };
+  }
+
+  if (input.selectedDocument.status === 'approved') {
+    return {
+      body: 'El documento ya fue aprobado. Elige el formato y descarga la version anonimizada.',
+      step: 4,
+      title: 'Descarga el anonimizado',
+    };
+  }
+
+  if (input.selectedDocument.status === 'failed') {
+    return {
+      body: 'La extraccion o anonimización fallo. Intenta con otro archivo o vuelve a cargar el documento.',
+      step: 1,
+      title: 'Vuelve a cargar el documento',
+    };
+  }
+
+  return {
+    body: 'Actualiza el estado si el procesamiento sigue en curso.',
+    step: 2,
+    title: 'Espera el procesamiento',
+  };
+}
+
+function reviewInstructionFor(document: DocumentItem): string {
+  if (document.status === 'needs_review') {
+    return 'Corrige la vista anonimizada si hace falta. Al aprobar, se habilitara la descarga.';
+  }
+
+  if (document.status === 'approved') {
+    return 'Documento aprobado. Puedes descargarlo en TXT, DOCX o PDF segun el formato elegido.';
+  }
+
+  if (document.status === 'failed') {
+    return 'No se pudo generar una vista anonimizadora util para este documento.';
+  }
+
+  return 'Selecciona Actualizar estado si el documento aun esta procesando.';
 }
 
 function updateDocumentLocally(
