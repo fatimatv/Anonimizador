@@ -287,6 +287,27 @@ describe('local detectors', () => {
     expect(anonymized.anonymizedText).not.toContain('MARIA LAURA TAVARES');
   });
 
+  it('redacts attributed speaker names followed by professional titles', () => {
+    const text =
+      'Cita 1\n\n“Lo resolvimos con la IA.”\n\nRita Carrillo\n\nCoordinadora Ejecutiva de Educación Continua de la Facultad de Educación';
+    const detectionResult = detectSensitiveEntities(text);
+    const anonymized = anonymizeText({
+      detections: detectionResult.detections,
+      text,
+    });
+
+    expect(detectionResult.detections).toEqual([
+      expect.objectContaining({
+        entityType: 'person_name',
+        previewMasked: '[PERSON_NAME REDACTADO]',
+        replacementType: 'redact',
+        ruleId: 'attribution-title-name-v1',
+      }),
+    ]);
+    expect(anonymized.anonymizedText).toContain('[PERSON_NAME REDACTADO]');
+    expect(anonymized.anonymizedText).not.toContain('Rita Carrillo');
+  });
+
   it('detects controlled dictionaries for sensitive data', () => {
     const result = detectSensitiveEntities(
       'Historia clinica con diagnostico de cancer y huella dactilar de menor de edad.',

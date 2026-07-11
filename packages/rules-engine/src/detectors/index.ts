@@ -393,6 +393,33 @@ function detectLegalNamedEntities(
     });
   }
 
+  const attributionNamePattern =
+    /^\s*([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'-]+(?:[ \t]+[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'-]+){1,4})\s*\n\s*(?:coordinador(?:a)?|director(?:a)?|gerente|jefe|jefa|profesor(?:a)?|docente|investigador(?:a)?|consultor(?:a)?|abogad[oa]|especialista|responsable|representante|presidente|secretari[oa])\b/gimu;
+
+  while ((match = attributionNamePattern.exec(text)) !== null) {
+    const rawValue = (match[1] ?? '').trim();
+
+    if (!isLikelyPersonName(rawValue)) {
+      continue;
+    }
+
+    const offsets = resolveOffsets(match, match[1] ?? match[0]);
+    const contextWindow = text.slice(Math.max(0, offsets.startOffset - 24), offsets.endOffset + 24);
+
+    detections.push({
+      category: 'personal_data',
+      confidence: 0.8,
+      contextWindowHash: hashValue(contextWindow, options.hashSecret),
+      endOffset: offsets.endOffset,
+      entityType: 'person_name',
+      previewMasked: '[PERSON_NAME REDACTADO]',
+      rawValueHash: hashValue(rawValue, options.hashSecret),
+      replacementType: 'redact',
+      ruleId: 'attribution-title-name-v1',
+      startOffset: offsets.startOffset,
+    });
+  }
+
   return detections;
 }
 
