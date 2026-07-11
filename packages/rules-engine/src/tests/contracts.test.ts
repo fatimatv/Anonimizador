@@ -381,6 +381,19 @@ describe('local detectors', () => {
     ]);
   });
 
+  it('does not anonymize public entity institutional contact information', () => {
+    const result = detectSensitiveEntities(
+      [
+        'INSTITUTO NACIONAL DE DEFENSA DE LA COMPETENCIA Y DE LA PROTECCION DE LA PROPIEDAD INTELECTUAL',
+        'Calle de la Prosa 104, San Borja, Lima 41 - Peru / Fax: 224 0348',
+        'E-mail: consultas@indecopi.gob.pe / Web: www.indecopi.gob.pe',
+        'TRIBUNAL DE DEFENSA DE LA COMPETENCIA',
+      ].join('\n'),
+    );
+
+    expect(result.detections).toHaveLength(0);
+  });
+
   it('detects controlled dictionaries for sensitive data', () => {
     const result = detectSensitiveEntities(
       'Historia clinica con diagnostico de cancer y huella dactilar de menor de edad.',

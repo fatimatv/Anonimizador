@@ -77,6 +77,7 @@ const regexRules: DetectorRule[] = [
     pattern: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/giu,
     replacementType: 'mask',
     ruleId: 'email-regex-v1',
+    validate: (_value, match, text) => !isPublicInstitutionalContactMatch(match, text),
   },
   {
     category: 'identifier',
@@ -133,6 +134,7 @@ const regexRules: DetectorRule[] = [
     pattern: /\bhttps?:\/\/[^\s<>"']+/giu,
     replacementType: 'redact',
     ruleId: 'url-regex-v1',
+    validate: (_value, match, text) => !isPublicInstitutionalContactMatch(match, text),
   },
   {
     category: 'identifier',
@@ -151,7 +153,8 @@ const regexRules: DetectorRule[] = [
     replacementType: 'mask',
     ruleId: 'phone-context-regex-v1',
     transformMatch: (match) => match[1]?.trim() ?? match[0],
-    validate: isLikelyPhoneNumber,
+    validate: (value, match, text) =>
+      isLikelyPhoneNumber(value) && !isPublicInstitutionalContactMatch(match, text),
   },
   {
     category: 'identifier',
@@ -199,6 +202,7 @@ const regexRules: DetectorRule[] = [
       /\b(?:av\.?|avenida|calle|jr\.?|jir[oó]n|pasaje|mz\.?|manzana)\s+[A-ZÁÉÍÓÚÑ0-9][^\n,;.]{3,80}/giu,
     replacementType: 'redact',
     ruleId: 'address-context-v1',
+    validate: (_value, match, text) => !isPublicInstitutionalContactMatch(match, text),
   },
   {
     category: 'identifier',
@@ -885,6 +889,39 @@ function isFollowedByPeruLegalEntitySuffix(text: string, endOffset: number): boo
   const rightContext = normalizeForRules(text.slice(endOffset, endOffset + 24));
 
   return /^(?:S A A|SAA|S A C|SAC|S A|SA|S R L|SRL|EIRL|E I R L)\b/u.test(rightContext);
+}
+
+function isPublicInstitutionalContactMatch(match?: RegExpExecArray, text?: string): boolean {
+  if (!match || !text) {
+    return false;
+  }
+
+  const window = institutionalLineWindow(text, match.index);
+  const normalized = normalizeForRules(window);
+
+  return (
+    normalized.includes('INDECOPI') ||
+    normalized.includes('INSTITUTO NACIONAL DE DEFENSA DE LA COMPETENCIA') ||
+    /\b[A-Z0-9.-]+ GOB PE\b/u.test(normalized)
+  );
+}
+
+function institutionalLineWindow(text: string, offset: number): string {
+  let start = Math.max(text.lastIndexOf('\n', offset - 1) + 1, 0);
+
+  for (let index = 0; index < 2 && start > 0; index += 1) {
+    start = Math.max(text.lastIndexOf('\n', start - 2) + 1, 0);
+  }
+
+  let end = text.indexOf('\n', offset);
+  end = end === -1 ? text.length : end;
+
+  for (let index = 0; index < 2 && end < text.length; index += 1) {
+    const next = text.indexOf('\n', end + 1);
+    end = next === -1 ? text.length : next;
+  }
+
+  return text.slice(start, end);
 }
 
 function lineHasPeruLegalEntitySuffixMatch(match?: RegExpExecArray, text?: string): boolean {
