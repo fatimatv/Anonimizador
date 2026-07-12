@@ -715,26 +715,7 @@ function isLikelyPersonName(value: string): boolean {
     'UNIDAD',
     'VISTA',
   ];
-  const corporateMarkers = [
-    'ASOCIACION',
-    'BANCO',
-    'COMISION',
-    'EMPRESA',
-    'EIRL',
-    'FINANCIERA',
-    'INDECOPI',
-    'MUNICIPALIDAD',
-    'S A',
-    'S A A',
-    'SA',
-    'SAA',
-    'SAC',
-    'S R L',
-    'SRL',
-    'UNIVERSIDAD',
-  ];
-
-  if (corporateMarkers.some((marker) => normalized.includes(marker))) {
+  if (hasCorporateOrInstitutionalMarker(normalized)) {
     return false;
   }
 
@@ -850,6 +831,14 @@ const commonGivenNames = new Set([
   'VALERIA',
   'VICTOR',
 ]);
+
+function hasCorporateOrInstitutionalMarker(normalized: string): boolean {
+  return (
+    /\b(?:ASOCIACION|BANCO|COMISION|EMPRESA|EIRL|FINANCIERA|INDECOPI|INSTITUTO|MUNICIPALIDAD|TRIBUNAL|UNIVERSIDAD)\b/u.test(
+      normalized,
+    ) || hasPeruLegalEntitySuffix(normalized)
+  );
+}
 
 function isNonPersonalCoverFieldMatch(match?: RegExpExecArray, text?: string): boolean {
   if (!match || !text) {

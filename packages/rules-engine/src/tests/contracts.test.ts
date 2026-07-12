@@ -394,6 +394,39 @@ describe('local detectors', () => {
     expect(result.detections).toHaveLength(0);
   });
 
+  it('redacts person names in Indecopi cover metadata even when public entities are preserved', () => {
+    const text = [
+      'TRIBUNAL DE DEFENSA DE LA COMPETENCIA',
+      'RESOLUCION 0544-2025/SPC-INDECOPI',
+      'EXPEDIENTE 0088-2023/CPC-INDECOPI-CAJ',
+      '',
+      'PROCEDENCIA : COMISION DE LA OFICINA REGIONAL DEL INDECOPI DE CAJAMARCA',
+      'PROCEDIMIENTO : DE PARTE',
+      'DENUNCIANTE : CARLOS ALBERTO GOMEZ BAZAN',
+      'DENUNCIADO : BANCO DE CREDITO DEL PERU S.A.',
+      'MATERIA : IDONEIDAD DEL SERVICIO',
+      'ACTIVIDAD : OTROS TIPOS DE INTERMEDIACION MONETARIA',
+      '',
+      'Mediante escrito del 5 de setiembre de 2023, el señor Carlos Alberto Gomez Bazan denuncio al Banco de Credito del Peru S.A.',
+    ].join('\n');
+    const detectionResult = detectSensitiveEntities(text);
+    const anonymized = anonymizeText({
+      detections: detectionResult.detections,
+      text,
+    });
+
+    expect(detectionResult.detections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          entityType: 'person_name',
+        }),
+      ]),
+    );
+    expect(anonymized.anonymizedText).not.toContain('CARLOS ALBERTO GOMEZ BAZAN');
+    expect(anonymized.anonymizedText).not.toContain('Carlos Alberto Gomez Bazan');
+    expect(anonymized.anonymizedText).toContain('BANCO DE CREDITO DEL PERU S.A.');
+  });
+
   it('detects controlled dictionaries for sensitive data', () => {
     const result = detectSensitiveEntities(
       'Historia clinica con diagnostico de cancer y huella dactilar de menor de edad.',
