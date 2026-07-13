@@ -1025,9 +1025,8 @@ function MethodologyView() {
             <div>
               <h2 className="text-lg font-extrabold text-[#011EF4]">Metodología de privacidad</h2>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-[#6F7072]">
-                La plataforma minimiza exposición de datos: procesa documentos con reglas locales,
-                evita IA externa y no usa base de datos persistente para almacenar documentos
-                cargados.
+                Los documentos se usan solo durante la solicitud de anonimización. No guardamos el
+                archivo original, el texto extraído ni los datos personales detectados.
               </p>
             </div>
             <div className="flex h-11 w-11 items-center justify-center rounded-md bg-[#011EF4] text-white">
@@ -1036,47 +1035,113 @@ function MethodologyView() {
           </div>
         </div>
 
+        <div className="grid gap-4 border-b border-[#dfe3ef] bg-[#f8fafc] p-5 lg:grid-cols-[1.1fr_0.9fr]">
+          <section className="rounded-md border border-[#dfe3ef] bg-white p-4">
+            <p className="text-xs font-extrabold uppercase tracking-wide text-[#011EF4]">
+              Compromiso principal
+            </p>
+            <p className="mt-2 text-lg font-extrabold leading-7 text-[#111827]">
+              Procesamos el documento para devolver una versión anonimizada, no para conservarlo.
+            </p>
+            <p className="mt-2 text-sm leading-6 text-[#6F7072]">
+              La información existe mientras se extrae texto, se detectan patrones sensibles y se
+              genera el resultado. Al terminar, la plataforma no crea un expediente ni una biblioteca
+              histórica con los documentos cargados.
+            </p>
+          </section>
+          <section className="rounded-md border border-[#dfe3ef] bg-white p-4">
+            <p className="text-xs font-extrabold uppercase tracking-wide text-[#011EF4]">
+              Lo que puede verificar el usuario
+            </p>
+            <ul className="mt-3 space-y-2 text-sm leading-6 text-[#374151]">
+              <li>La descarga se habilita solo después de revisar el texto anonimizado.</li>
+              <li>El resultado se obtiene en la sesión actual, sin crear una cuenta obligatoria.</li>
+              <li>La app muestra detecciones enmascaradas, no valores personales completos.</li>
+            </ul>
+          </section>
+        </div>
+
         <div className="grid gap-0 lg:grid-cols-3">
           <MethodologyCard
             icon={<UploadCloud size={20} aria-hidden="true" />}
-            title="Procesamiento temporal"
-            body="El archivo se envía al backend sólo para extraer texto, detectar patrones sensibles y devolver el resultado anonimizado. En el despliegue actual no se guardan documentos en una base de datos."
+            title="1. Carga temporal"
+            body="El archivo se recibe únicamente para completar la operación solicitada: leer su contenido, ubicar datos sensibles y preparar una versión anonimizada."
           />
           <MethodologyCard
             icon={<ShieldCheck size={20} aria-hidden="true" />}
-            title="Motor local"
-            body="La detección usa reglas determinísticas para DNI, RUC, correos, teléfonos, tarjetas, direcciones, nombres contextuales y otros patrones. No se llama a APIs de IA externas."
+            title="2. Detección controlada"
+            body="La detección usa reglas locales para DNI, RUC, correos, teléfonos, tarjetas, direcciones, nombres contextuales y otros patrones. No enviamos el contenido a APIs externas de IA."
           />
           <MethodologyCard
             icon={<Eye size={20} aria-hidden="true" />}
-            title="Revisión obligatoria"
-            body="El usuario revisa el texto anonimizado y las detecciones antes de aprobar la descarga. La aprobación ocurre en la sesión actual para evitar persistir documentos."
+            title="3. Revisión humana"
+            body="Antes de descargar, el usuario revisa el texto anonimizado y puede corregirlo. La aprobación confirma que el documento está listo para ser usado."
           />
         </div>
 
-        <div className="grid gap-5 border-t border-[#dfe3ef] bg-[#f8fafc] p-5 lg:grid-cols-[1fr_1fr]">
+        <div className="grid gap-5 border-t border-[#dfe3ef] bg-white p-5 lg:grid-cols-3">
+          <section>
+            <div className="flex items-center gap-2 text-[#011EF4]">
+              <Trash2 size={18} aria-hidden="true" />
+              <h3 className="text-sm font-extrabold uppercase tracking-wide">
+                Qué no almacenamos
+              </h3>
+            </div>
+            <ul className="mt-3 space-y-2 text-sm leading-6 text-[#374151]">
+              <li>El documento original cargado.</li>
+              <li>El documento anonimizado después de la sesión.</li>
+              <li>El texto extraído del documento.</li>
+              <li>Nombres, DNI, correos, direcciones u otros datos personales detectados.</li>
+            </ul>
+          </section>
+          <section>
+            <div className="flex items-center gap-2 text-[#011EF4]">
+              <ClipboardCheck size={18} aria-hidden="true" />
+              <h3 className="text-sm font-extrabold uppercase tracking-wide">
+                Qué sí registramos
+              </h3>
+            </div>
+            <ul className="mt-3 space-y-2 text-sm leading-6 text-[#374151]">
+              <li>Estado técnico de la operación: procesado, fallido, aprobado o eliminado.</li>
+              <li>Identificadores internos y hashes para trazabilidad sin contenido personal.</li>
+              <li>Fechas, tamaños y métricas necesarias para seguridad y diagnóstico.</li>
+            </ul>
+          </section>
+          <section>
+            <div className="flex items-center gap-2 text-[#011EF4]">
+              <Files size={18} aria-hidden="true" />
+              <h3 className="text-sm font-extrabold uppercase tracking-wide">
+                Cómo lo demostramos
+              </h3>
+            </div>
+            <ul className="mt-3 space-y-2 text-sm leading-6 text-[#374151]">
+              <li>Diseño sin base documental permanente para archivos cargados.</li>
+              <li>Logs configurados para no incluir contenido del documento.</li>
+              <li>Pruebas y revisiones técnicas sobre eliminación y retención.</li>
+            </ul>
+          </section>
+        </div>
+
+        <div className="grid gap-5 border-t border-[#dfe3ef] bg-[#f8fafc] p-5 lg:grid-cols-[0.9fr_1.1fr]">
           <section>
             <h3 className="text-sm font-extrabold uppercase tracking-wide text-[#011EF4]">
               Qué no se almacena
             </h3>
-            <ul className="mt-3 space-y-2 text-sm leading-6 text-[#374151]">
-              <li>No se registra el nombre original del archivo; se trabaja con hashes.</li>
-              <li>
-                No se guardan valores crudos detectados; se guardan hashes y vistas enmascaradas.
-              </li>
-              <li>No se conserva una base histórica de documentos cargados en producción.</li>
-            </ul>
+            <p className="mt-3 text-sm leading-6 text-[#374151]">
+              No se conserva una base histórica con documentos cargados. Los datos personales
+              detectados se muestran de forma enmascarada cuando son necesarios para revisión, y no
+              se guardan como valores completos.
+            </p>
           </section>
           <section>
             <h3 className="text-sm font-extrabold uppercase tracking-wide text-[#011EF4]">
-              Alcance real
+              Alcance real de la promesa
             </h3>
             <p className="mt-3 text-sm leading-6 text-[#374151]">
-              El procesamiento usa almacenamiento temporal del runtime serverless y memoria de la
-              sesión para completar la operación. Ese entorno puede existir brevemente mientras la
-              función está activa, pero no se implementó persistencia documental permanente. Para
-              auditoría empresarial con usuarios nominales se recomienda una fase separada con
-              Supabase y políticas explícitas de retención.
+              Para anonimizar, el sistema sí recibe el archivo durante la solicitud. Por eso la
+              promesa correcta no es “nunca vemos el documento”, sino “no lo conservamos después del
+              procesamiento”. En entornos empresariales se puede reforzar esta evidencia con
+              auditorías, reportes de retención y pruebas automatizadas de eliminación.
             </p>
           </section>
         </div>
